@@ -1,48 +1,139 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 import apiRouter from './backend/src/routes/api.routes.js';
 import { errorHandler } from './backend/src/middlewares/error.middleware.js';
-import { createServer as createViteServer } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
 
-  // Basic Middlewares
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+/**
+ * ============================================================
+ * MIDDLEWARES
+ * ============================================================
+ */
 
-  // API Routes FIRST
-  app.use('/api', apiRouter);
+app.use(express.json());
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
 
-  // Global API Error Handler
-  app.use('/api', errorHandler);
+/**
+ * ============================================================
+ * API
+ * ============================================================
+ *
+ * Todas as rotas da aplicação continuam utilizando:
+ *
+ * /api/auth
+ * /api/admin
+ * /api/companies
+ * /api/clients
+ * /api/vehicles
+ * /api/dashboard
+ * /api/rentals
+ * /api/financial
+ * /api/maintenance
+ */
+app.use('/api', apiRouter);
 
-  // Vite middleware for development vs Static files in production
-  if (process.env.NODE_ENV !== 'production') {
+/**
+ * ============================================================
+ * ERROR HANDLER DA API
+ * ============================================================
+ */
+app.use('/api', errorHandler);
+
+/**
+ * ============================================================
+ * FRONTEND / VITE
+ * ============================================================
+ *
+ * Desenvolvimento:
+ * utiliza o Vite como middleware.
+ *
+ * Produção:
+ * serve o conteúdo gerado pelo Vite.
+ */
+if (process.env.NODE_ENV !== 'production') {
+  const startDevelopmentServer = async () => {
+    const { createServer: createViteServer } = await import('vite');
+
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+      },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[FROTA CRM] Server running on http://0.0.0.0:${PORT}`);
+    app.use(vite.middlewares);
+  };
+
+  void startDevelopmentServer().catch((error) => {
+    console.error(
+      '[FROTA CRM] Erro ao iniciar Vite:',
+      error
+    );
+  });
+} else {
+  const distPath = path.join(
+    __dirname,
+    'dist'
+  );
+
+  app.use(
+    express.static(distPath)
+  );
+
+  app.get('*', (_req, res) => {
+    res.sendFile(
+      path.join(
+        distPath,
+        'index.html'
+      )
+    );
   });
 }
 
-startServer().catch((err) => {
-  console.error('Fatal Server Startup Error:', err);
-  process.exit(1);
-});
+/**
+ * ============================================================
+ * EXPORTAÇÃO PARA A VERCEL
+ * ============================================================
+ *
+ * A Vercel utiliza esta instância Express como sua
+ * aplicação/serverless function.
+ */
+export default app;
+
+/**
+ * ============================================================
+ * SERVIDOR LOCAL
+ * ============================================================
+ *
+ * Quando executamos:
+ *
+ * npm run dev
+ *
+ * continuamos utilizando o Express normalmente em
+ * http://localhost:3000
+ */
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = Number(
+    process.env.PORT || 3000
+  );
+
+  app.listen(
+    PORT,
+    '0.0.0.0',
+    () => {
+      console.log(
+        `[FROTA CRM] Server running on http://0.0.0.0:${PORT}`
+      );
+    }
+  );
+}
