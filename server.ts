@@ -3,7 +3,7 @@ import path from 'path';
 import app from './backend/src/app.js';
 import { createServer as createViteServer } from 'vite';
 
-async function startServer() {
+async function startLocalServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   if (process.env.NODE_ENV !== 'production') {
@@ -32,7 +32,15 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('[FROTA CRM] Fatal Server Startup Error:', err);
-  process.exit(1);
-});
+/*
+ * Na Vercel, o Express será usado como uma Function.
+ * Localmente, iniciamos o servidor normalmente.
+ */
+if (!process.env.VERCEL) {
+  startLocalServer().catch((err) => {
+    console.error('[FROTA CRM] Fatal Server Startup Error:', err);
+    process.exit(1);
+  });
+}
+
+export default app;
