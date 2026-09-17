@@ -1,63 +1,149 @@
 import { Response, NextFunction } from 'express';
-import { db, generateUUID, Vehicle } from '../db/store.js';
+import { Prisma } from '@prisma/client';
+
+import { prisma } from '../config/prisma.js';
 import { vehicleSchema } from '../schemas/index.js';
 import { unmask } from '../utils/formatters.js';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware.js';
 
+function normalizePlate(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+function normalizeText(value?: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+}
+
+function toDate(value?: string | null): Date | null {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function serializeVehicle<T extends Record<string, any>>(vehicle: T): T {
+  return vehicle;
+}
+
 export class VehiclesController {
-  async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async list(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const companyId = req.user!.companyId;
       const { search, status, category } = req.query;
 
-      let vehicles = db.vehicles.filter((v) => v.companyId === companyId);
+      if (!companyId) {
+        res.status(403).json({
+          error: 'COMPANY_REQUIRED',
+          message: 'Usuário não está vinculado a uma empresa.',
+        });
+        return;
+      }
+
+      const where: Prisma.VehicleWhereInput = {
+        companyId,
+      };
 
       if (status && typeof status === 'string' && status !== 'ALL') {
-        vehicles = vehicles.filter((v) => v.status === status);
+        where.status = status as Prisma.VehicleWhereInput['status'];
       }
 
       if (category && typeof category === 'string' && category !== 'ALL') {
-        vehicles = vehicles.filter((v) => v.category.toUpperCase() === category.toUpperCase());
+        where.category = {
+          equals: category.toUpperCase(),
+          mode: 'insensitive',
+        };
       }
 
-      if (search && typeof search === 'string') {
-        const query = search.trim().toUpperCase();
-        const unmaskedQuery = unmask(query);
+      if (search && typeof search === 'string' && search.trim()) {
+        const query = search.trim();
+        const normalizedQuery = unmask(query).toUpperCase();
 
-        vehicles = vehicles.filter((v) => {
-          return (
-            v.plate.includes(unmaskedQuery) ||
-            v.brand.toUpperCase().includes(query) ||
-            v.model.toUpperCase().includes(query) ||
-            (v.renavam && v.renavam.includes(unmaskedQuery)) ||
-            (v.tracker && v.tracker.toUpperCase().includes(query))
-          );
-        });
+        where.OR = [
+          {
+            plate: {
+              contains: normalizedQuery,
+              mode: 'insensitive',
+            },
+          },
+          {
+            brand: {
+              contains: query.toUpperCase(),
+              mode: 'insensitive',
+            },
+          },
+          {
+            model: {
+              contains: query.toUpperCase(),
+              mode: 'insensitive',
+            },
+          },
+          {
+            renavam: {
+              contains: normalizedQuery,
+              mode: 'insensitive',
+            },
+          },
+          {
+            tracker: {
+              contains: query.toUpperCase(),
+              mode: 'insensitive',
+            },
+          },
+        ];
       }
 
-      // Sort newest created first
-      vehicles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const vehicles = await prisma.vehicle.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
 
-      // Enrich with active rental info if rented
-      const enrichedVehicles = vehicles.map((v) => {
-        let activeRentalInfo = null;
-        if (v.status === 'RENTED') {
-          const rental = db.rentals.find((r) => r.vehicleId === v.id && r.status === 'ACTIVE');
-          if (rental) {
-            const client = db.clients.find((c) => c.id === rental.clientId);
-            activeRentalInfo = {
-              rentalId: rental.id,
-              rentalNumber: rental.rentalNumber,
-              clientName: client ? client.name : 'N/A',
-              startDate: rental.startDate,
-              endDate: rental.endDate,
-              amount: rental.amount,
-            };
-          }
-        }
+      const rentedVehicleIds = vehicles
+        .filter((vehicle) => vehicle.status === 'RENTED')
+        .map((vehicle) => vehicle.id);
+
+      const activeRentals =
+        rentedVehicleIds.length > 0
+          ? await prisma.rental.findMany({
+              where: {
+                companyId,
+                vehicleId: {
+                  in: rentedVehicleIds,
+                },
+                status: 'ACTIVE',
+              },
+              include: {
+                client: true,
+              },
+            })
+          : [];
+
+      const rentalByVehicleId = new Map(
+        activeRentals.map((rental) => [rental.vehicleId, rental]),
+      );
+
+      const enrichedVehicles = vehicles.map((vehicle) => {
+        const rental = rentalByVehicleId.get(vehicle.id);
+
         return {
-          ...v,
-          activeRental: activeRentalInfo,
+          ...serializeVehicle(vehicle),
+          activeRental: rental
+            ? {
+                rentalId: rental.id,
+                rentalNumber: rental.rentalNumber,
+                clientName: rental.client?.name ?? 'N/A',
+                startDate: rental.startDate,
+                endDate: rental.endDate,
+                amount: rental.amount,
+              }
+            : null,
         };
       });
 
@@ -70,12 +156,79 @@ export class VehiclesController {
     }
   }
 
-  async getById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getById(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const companyId = req.user!.companyId;
       const { id } = req.params;
 
-      const vehicle = db.vehicles.find((v) => v.id === id && v.companyId === companyId);
+      if (!companyId) {
+        res.status(403).json({
+          error: 'COMPANY_REQUIRED',
+          message: 'Usuário não está vinculado a uma empresa.',
+        });
+        return;
+      }
+
+      const vehicle = await prisma.vehicle.findFirst({
+        where: {
+          id,
+          companyId,
+        },
+        include: {
+          rentals: {
+            where: {
+              companyId,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+            include: {
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                  cpfCnpj: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          maintenances: {
+            where: {
+              companyId,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          mileageLogs: {
+            orderBy: {
+              date: 'desc',
+            },
+          },
+          fines: {
+            where: {
+              companyId,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          expenses: {
+            where: {
+              companyId,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+        },
+      });
+
       if (!vehicle) {
         res.status(404).json({
           error: 'VEHICLE_NOT_FOUND',
@@ -84,59 +237,42 @@ export class VehiclesController {
         return;
       }
 
-      const vehicleRentals = db.rentals
-        .filter((r) => r.vehicleId === vehicle.id && r.companyId === companyId)
-        .map((r) => {
-          const client = db.clients.find((c) => c.id === r.clientId);
-          return {
-            ...r,
-            client: client
-              ? {
-                  id: client.id,
-                  name: client.name,
-                  cpfCnpj: client.cpfCnpj,
-                  phone: client.phone,
-                }
-              : null,
-          };
-        });
-
-      const vehicleMaintenances = db.maintenances.filter(
-        (m) => m.vehicleId === vehicle.id && m.companyId === companyId
-      );
-
-      const vehicleMileages = db.vehicleMileages.filter((vm) => vm.vehicleId === vehicle.id);
-
-      const vehicleFines = db.fines.filter((f) => f.vehicleId === vehicle.id && f.companyId === companyId);
-
-      const vehicleExpenses = db.expenses.filter((e) => e.vehicleId === vehicle.id && e.companyId === companyId);
-
       res.json({
-        data: {
-          ...vehicle,
-          rentals: vehicleRentals,
-          maintenances: vehicleMaintenances,
-          mileageLogs: vehicleMileages,
-          fines: vehicleFines,
-          expenses: vehicleExpenses,
-        },
+        data: vehicle,
       });
     } catch (err) {
       next(err);
     }
   }
 
-  async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async create(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const companyId = req.user!.companyId;
+
+      if (!companyId) {
+        res.status(403).json({
+          error: 'COMPANY_REQUIRED',
+          message: 'Usuário não está vinculado a uma empresa.',
+        });
+        return;
+      }
+
       const data = vehicleSchema.parse(req.body);
+      const cleanPlate = normalizePlate(data.plate);
 
-      const cleanPlate = data.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-
-      // Check unique plate inside company
-      const existing = db.vehicles.find(
-        (v) => v.companyId === companyId && v.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === cleanPlate
-      );
+      const existing = await prisma.vehicle.findFirst({
+        where: {
+          companyId,
+          plate: cleanPlate,
+        },
+        select: {
+          id: true,
+        },
+      });
 
       if (existing) {
         res.status(409).json({
@@ -146,84 +282,118 @@ export class VehiclesController {
         return;
       }
 
-      const now = new Date().toISOString();
-      const vehicleId = generateUUID();
+      const vehicle = await prisma.$transaction(async (tx) => {
+        const createdVehicle = await tx.vehicle.create({
+          data: {
+            companyId,
+            plate: cleanPlate,
+            brand: data.brand.trim().toUpperCase(),
+            model: data.model.trim().toUpperCase(),
+            version: normalizeText(data.version),
+            manufactureYear: data.manufactureYear,
+            modelYear: data.modelYear,
+            color: data.color.trim().toUpperCase(),
+            fuel: data.fuel.trim().toUpperCase(),
+            category: data.category.trim().toUpperCase(),
+            vehicleType: normalizeText(data.vehicleType) ?? 'CARRO',
+            status: data.status ?? 'AVAILABLE',
+            renavam: data.renavam ? unmask(data.renavam) : null,
+            chassis: normalizeText(data.chassis),
+            engine: normalizeText(data.engine),
+            currentMileage: data.currentMileage ?? 0,
+            power: normalizeText(data.power),
+            displacement: normalizeText(data.displacement),
+            passengerCapacity: data.passengerCapacity ?? null,
+            purchaseValue: data.purchaseValue ?? null,
+            purchaseDate: toDate(data.purchaseDate),
+            dailyRate: data.dailyRate,
+            weeklyRate: data.weeklyRate,
+            biweeklyRate: data.biweeklyRate ?? null,
+            monthlyRate: data.monthlyRate,
+            mileageAllowance: data.mileageAllowance ?? 0,
+            excessMileageRate: data.excessMileageRate ?? 0.5,
+            nextMaintenanceDate: toDate(data.nextMaintenanceDate),
+            insuranceProvider: normalizeText(data.insuranceProvider),
+            insuranceExpiration: toDate(data.insuranceExpiration),
+            tracker: normalizeText(data.tracker),
+            notes: normalizeText(data.notes),
+          },
+        });
 
-      const newVehicle: Vehicle = {
-        id: vehicleId,
-        companyId,
-        plate: cleanPlate,
-        brand: data.brand.toUpperCase(),
-        model: data.model.toUpperCase(),
-        version: data.version ? data.version.toUpperCase() : null,
-        manufactureYear: data.manufactureYear,
-        modelYear: data.modelYear,
-        color: data.color.toUpperCase(),
-        fuel: data.fuel.toUpperCase(),
-        category: data.category.toUpperCase(),
-        vehicleType: data.vehicleType ? data.vehicleType.toUpperCase() : 'CARRO',
-        currentMileage: data.currentMileage || 0,
-        status: data.status || 'AVAILABLE',
-        renavam: data.renavam ? unmask(data.renavam) : null,
-        chassis: data.chassis ? data.chassis.toUpperCase() : null,
-        engine: data.engine ? data.engine.toUpperCase() : null,
-        power: data.power ? data.power.toUpperCase() : null,
-        displacement: data.displacement ? data.displacement.toUpperCase() : null,
-        passengerCapacity: data.passengerCapacity || null,
-        purchaseValue: data.purchaseValue || null,
-        purchaseDate: data.purchaseDate || null,
-        dailyRate: data.dailyRate,
-        weeklyRate: data.weeklyRate,
-        biweeklyRate: data.biweeklyRate || null,
-        monthlyRate: data.monthlyRate,
-        mileageAllowance: data.mileageAllowance || 0,
-        excessMileageRate: data.excessMileageRate || 0.50,
-        nextMaintenanceDate: data.nextMaintenanceDate || null,
-        insuranceProvider: data.insuranceProvider ? data.insuranceProvider.toUpperCase() : null,
-        insuranceExpiration: data.insuranceExpiration || null,
-        tracker: data.tracker ? data.tracker.toUpperCase() : null,
-        notes: data.notes ? data.notes.toUpperCase() : null,
-        createdAt: now,
-        updatedAt: now,
-      };
+        await tx.vehicleMileage.create({
+          data: {
+            vehicleId: createdVehicle.id,
+            mileage: createdVehicle.currentMileage,
+            date: new Date(),
+            type: 'MANUAL',
+            notes: 'QUILOMETRAGEM INICIAL DE CADASTRO NO SISTEMA',
+            createdBy: req.user!.name,
+          },
+        });
 
-      db.vehicles.push(newVehicle);
+        await tx.auditLog.create({
+          data: {
+            companyId,
+            userId: req.user!.userId,
+            action: 'CREATE',
+            entity: 'VEHICLE',
+            entityId: createdVehicle.id,
+            oldData: null,
+            newData: JSON.stringify({
+              plate: createdVehicle.plate,
+              model: createdVehicle.model,
+            }),
+          },
+        });
 
-      // Create initial Mileage log
-      db.vehicleMileages.push({
-        id: generateUUID(),
-        vehicleId: newVehicle.id,
-        mileage: newVehicle.currentMileage,
-        date: now,
-        type: 'MANUAL',
-        notes: 'QUILOMETRAGEM INICIAL DE CADASTRO NO SISTEMA',
-        createdBy: req.user!.name,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      db.createAuditLog(companyId, req.user!.userId, 'CREATE', 'VEHICLE', newVehicle.id, null, {
-        plate: newVehicle.plate,
-        model: newVehicle.model,
+        return createdVehicle;
       });
 
       res.status(201).json({
         message: 'Veículo cadastrado com sucesso!',
-        data: newVehicle,
+        data: vehicle,
       });
     } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        res.status(409).json({
+          error: 'PLATE_ALREADY_EXISTS',
+          message: 'Já existe um veículo cadastrado com essa placa nesta empresa.',
+        });
+        return;
+      }
+
       next(err);
     }
   }
 
-  async update(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async update(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const companyId = req.user!.companyId;
       const { id } = req.params;
-      const data = vehicleSchema.parse(req.body);
 
-      const vehicleIndex = db.vehicles.findIndex((v) => v.id === id && v.companyId === companyId);
-      if (vehicleIndex === -1) {
+      if (!companyId) {
+        res.status(403).json({
+          error: 'COMPANY_REQUIRED',
+          message: 'Usuário não está vinculado a uma empresa.',
+        });
+        return;
+      }
+
+      const data = vehicleSchema.parse(req.body);
+      const cleanPlate = normalizePlate(data.plate);
+
+      const existingVehicle = await prisma.vehicle.findFirst({
+        where: {
+          id,
+          companyId,
+        },
+      });
+
+      if (!existingVehicle) {
         res.status(404).json({
           error: 'VEHICLE_NOT_FOUND',
           message: 'Veículo não encontrado.',
@@ -231,16 +401,18 @@ export class VehiclesController {
         return;
       }
 
-      const existingVehicle = db.vehicles[vehicleIndex];
-      const cleanPlate = data.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-
-      // Check unique plate conflict
-      const conflict = db.vehicles.find(
-        (v) =>
-          v.companyId === companyId &&
-          v.id !== id &&
-          v.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === cleanPlate
-      );
+      const conflict = await prisma.vehicle.findFirst({
+        where: {
+          companyId,
+          plate: cleanPlate,
+          NOT: {
+            id,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
 
       if (conflict) {
         res.status(409).json({
@@ -250,7 +422,6 @@ export class VehiclesController {
         return;
       }
 
-      // Validate mileage cannot decrease
       if (data.currentMileage < existingVehicle.currentMileage) {
         res.status(400).json({
           error: 'INVALID_MILEAGE',
@@ -259,84 +430,146 @@ export class VehiclesController {
         return;
       }
 
-      // If mileage increased, create mileage log
-      if (data.currentMileage > existingVehicle.currentMileage) {
-        db.vehicleMileages.push({
-          id: generateUUID(),
-          vehicleId: existingVehicle.id,
-          mileage: data.currentMileage,
-          date: new Date().toISOString(),
-          type: 'MANUAL',
-          notes: 'ATUALIZAÇÃO MANUAL DE QUILOMETRAGEM',
-          createdBy: req.user!.name,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+      const updatedVehicle = await prisma.$transaction(async (tx) => {
+        const vehicle = await tx.vehicle.update({
+          where: {
+            id: existingVehicle.id,
+          },
+          data: {
+            plate: cleanPlate,
+            brand: data.brand.trim().toUpperCase(),
+            model: data.model.trim().toUpperCase(),
+            version: normalizeText(data.version),
+            manufactureYear: data.manufactureYear,
+            modelYear: data.modelYear,
+            color: data.color.trim().toUpperCase(),
+            fuel: data.fuel.trim().toUpperCase(),
+            category: data.category.trim().toUpperCase(),
+            vehicleType:
+              normalizeText(data.vehicleType) ??
+              existingVehicle.vehicleType ??
+              'CARRO',
+            status: data.status ?? existingVehicle.status,
+            renavam: data.renavam ? unmask(data.renavam) : null,
+            chassis: normalizeText(data.chassis),
+            engine: normalizeText(data.engine),
+            currentMileage: data.currentMileage,
+            power: normalizeText(data.power),
+            displacement: normalizeText(data.displacement),
+            passengerCapacity:
+              data.passengerCapacity !== undefined
+                ? data.passengerCapacity
+                : existingVehicle.passengerCapacity,
+            purchaseValue: data.purchaseValue ?? null,
+            purchaseDate: toDate(data.purchaseDate),
+            dailyRate: data.dailyRate,
+            weeklyRate: data.weeklyRate,
+            biweeklyRate: data.biweeklyRate ?? null,
+            monthlyRate: data.monthlyRate,
+            mileageAllowance: data.mileageAllowance ?? 0,
+            excessMileageRate: data.excessMileageRate ?? 0.5,
+            nextMaintenanceDate: toDate(data.nextMaintenanceDate),
+            insuranceProvider: normalizeText(data.insuranceProvider),
+            insuranceExpiration: toDate(data.insuranceExpiration),
+            tracker: normalizeText(data.tracker),
+            notes: normalizeText(data.notes),
+          },
         });
-      }
 
-      const updatedVehicle: Vehicle = {
-        ...existingVehicle,
-        plate: cleanPlate,
-        brand: data.brand.toUpperCase(),
-        model: data.model.toUpperCase(),
-        version: data.version ? data.version.toUpperCase() : null,
-        manufactureYear: data.manufactureYear,
-        modelYear: data.modelYear,
-        color: data.color.toUpperCase(),
-        fuel: data.fuel.toUpperCase(),
-        category: data.category.toUpperCase(),
-        vehicleType: data.vehicleType ? data.vehicleType.toUpperCase() : (existingVehicle.vehicleType || 'CARRO'),
-        currentMileage: data.currentMileage,
-        status: data.status,
-        renavam: data.renavam ? unmask(data.renavam) : null,
-        chassis: data.chassis ? data.chassis.toUpperCase() : null,
-        engine: data.engine ? data.engine.toUpperCase() : null,
-        power: data.power ? data.power.toUpperCase() : null,
-        displacement: data.displacement ? data.displacement.toUpperCase() : null,
-        passengerCapacity: data.passengerCapacity !== undefined ? data.passengerCapacity : (existingVehicle.passengerCapacity || null),
-        purchaseValue: data.purchaseValue || null,
-        purchaseDate: data.purchaseDate || null,
-        dailyRate: data.dailyRate,
-        weeklyRate: data.weeklyRate,
-        biweeklyRate: data.biweeklyRate || null,
-        monthlyRate: data.monthlyRate,
-        mileageAllowance: data.mileageAllowance,
-        excessMileageRate: data.excessMileageRate,
-        nextMaintenanceDate: data.nextMaintenanceDate || null,
-        insuranceProvider: data.insuranceProvider ? data.insuranceProvider.toUpperCase() : null,
-        insuranceExpiration: data.insuranceExpiration || null,
-        tracker: data.tracker ? data.tracker.toUpperCase() : null,
-        notes: data.notes ? data.notes.toUpperCase() : null,
-        updatedAt: new Date().toISOString(),
-      };
+        if (data.currentMileage > existingVehicle.currentMileage) {
+          await tx.vehicleMileage.create({
+            data: {
+              vehicleId: existingVehicle.id,
+              mileage: data.currentMileage,
+              date: new Date(),
+              type: 'MANUAL',
+              notes: 'ATUALIZAÇÃO MANUAL DE QUILOMETRAGEM',
+              createdBy: req.user!.name,
+            },
+          });
+        }
 
-      db.vehicles[vehicleIndex] = updatedVehicle;
+        await tx.auditLog.create({
+          data: {
+            companyId,
+            userId: req.user!.userId,
+            action: 'UPDATE',
+            entity: 'VEHICLE',
+            entityId: vehicle.id,
+            oldData: JSON.stringify({
+              plate: existingVehicle.plate,
+              model: existingVehicle.model,
+              status: existingVehicle.status,
+              currentMileage: existingVehicle.currentMileage,
+            }),
+            newData: JSON.stringify({
+              plate: vehicle.plate,
+              model: vehicle.model,
+              status: vehicle.status,
+              currentMileage: vehicle.currentMileage,
+            }),
+          },
+        });
 
-      db.createAuditLog(
-        companyId,
-        req.user!.userId,
-        'UPDATE',
-        'VEHICLE',
-        updatedVehicle.id,
-        existingVehicle,
-        updatedVehicle
-      );
+        return vehicle;
+      });
 
       res.json({
         message: 'Veículo atualizado com sucesso!',
         data: updatedVehicle,
       });
     } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        res.status(409).json({
+          error: 'PLATE_ALREADY_EXISTS',
+          message: 'Outro veículo já está cadastrado com essa placa.',
+        });
+        return;
+      }
+
       next(err);
     }
   }
 
-  async delete(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async delete(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
       const companyId = req.user!.companyId;
       const { id } = req.params;
 
-      const vehicle = db.vehicles.find((v) => v.id === id && v.companyId === companyId);
+      if (!companyId) {
+        res.status(403).json({
+          error: 'COMPANY_REQUIRED',
+          message: 'Usuário não está vinculado a uma empresa.',
+        });
+        return;
+      }
+
+      const vehicle = await prisma.vehicle.findFirst({
+        where: {
+          id,
+          companyId,
+        },
+        include: {
+          _count: {
+            select: {
+              rentals: true,
+              maintenances: true,
+              mileageLogs: true,
+              fines: true,
+              expenses: true,
+              incidents: true,
+              inspections: true,
+              financialTransactions: true,
+              maintenancePlans: true,
+            },
+          },
+        },
+      });
+
       if (!vehicle) {
         res.status(404).json({
           error: 'VEHICLE_NOT_FOUND',
@@ -353,16 +586,72 @@ export class VehiclesController {
         return;
       }
 
-      vehicle.status = 'SOLD';
-      vehicle.updatedAt = new Date().toISOString();
+      // A quilometragem inicial é um registro técnico criado automaticamente
+      // no cadastro e não deve impedir a exclusão de um veículo de teste/novo.
+      // Registros de negócio/histórico continuam protegendo a exclusão definitiva.
+      const relatedRecords =
+        vehicle._count.rentals +
+        vehicle._count.maintenances +
+        vehicle._count.fines +
+        vehicle._count.expenses +
+        vehicle._count.incidents +
+        vehicle._count.inspections +
+        vehicle._count.financialTransactions +
+        vehicle._count.maintenancePlans;
 
-      db.createAuditLog(companyId, req.user!.userId, 'STATUS_CHANGE', 'VEHICLE', vehicle.id, null, {
-        status: 'SOLD',
+      if (relatedRecords > 0) {
+        res.status(409).json({
+          error: 'VEHICLE_HAS_HISTORY',
+          message:
+            'Este veículo possui registros operacionais vinculados e não pode ser excluído definitivamente. Para preservar o histórico, mantenha-o como vendido/inativo.',
+          details: {
+            rentals: vehicle._count.rentals,
+            maintenances: vehicle._count.maintenances,
+            mileageLogs: vehicle._count.mileageLogs,
+            fines: vehicle._count.fines,
+            expenses: vehicle._count.expenses,
+            incidents: vehicle._count.incidents,
+            inspections: vehicle._count.inspections,
+            financialTransactions: vehicle._count.financialTransactions,
+            maintenancePlans: vehicle._count.maintenancePlans,
+          },
+        });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            companyId,
+            userId: req.user!.userId,
+            action: 'DELETE',
+            entity: 'VEHICLE',
+            entityId: vehicle.id,
+            oldData: JSON.stringify({
+              plate: vehicle.plate,
+              brand: vehicle.brand,
+              model: vehicle.model,
+              status: vehicle.status,
+            }),
+            newData: JSON.stringify({
+              deleted: true,
+            }),
+          },
+        });
+
+        await tx.vehicle.delete({
+          where: {
+            id: vehicle.id,
+          },
+        });
       });
 
       res.json({
-        message: 'Veículo marcado como vendido/inativado.',
-        data: vehicle,
+        message: 'Veículo excluído definitivamente com sucesso.',
+        data: {
+          id: vehicle.id,
+          plate: vehicle.plate,
+        },
       });
     } catch (err) {
       next(err);

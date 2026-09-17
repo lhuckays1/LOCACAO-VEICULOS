@@ -65,6 +65,19 @@ type CrlvExtractedData = {
 
 type CrlvFieldKey = keyof CrlvExtractedData;
 
+const getVehicleStatusLabel = (status: VehicleStatus): string => {
+  const labels: Record<VehicleStatus, string> = {
+    AVAILABLE: 'DISPONÍVEL',
+    RESERVED: 'RESERVADO',
+    RENTED: 'ALUGADO',
+    MAINTENANCE: 'EM MANUTENÇÃO',
+    BLOCKED: 'BLOQUEADO',
+    SOLD: 'VENDIDO',
+  };
+
+  return labels[status] ?? status;
+};
+
 type CrlvPdfTextItem = {
   text: string;
   x: number;
@@ -1190,7 +1203,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
-                        <Badge variant={v.status}>{v.status}</Badge>
+                        <Badge variant={v.status}>{getVehicleStatusLabel(v.status)}</Badge>
                         {v.activeRental && (
                           <div className="text-[10px] text-blue-600 font-semibold truncate max-w-[120px] mt-0.5">
                             Loc: {v.activeRental.clientName}
@@ -1238,7 +1251,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                 <span className="font-mono font-black bg-slate-900 text-white px-2.5 py-1 rounded-md text-xs tracking-wider shadow-2xs">
                   {maskPlate(v.plate)}
                 </span>
-                <Badge variant={v.status}>{v.status}</Badge>
+                <Badge variant={v.status}>{getVehicleStatusLabel(v.status)}</Badge>
               </div>
 
               <CardContent className="p-4 space-y-3 text-xs">
@@ -1790,7 +1803,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
 
               <div className="flex items-center gap-2">
                 <Badge variant={viewingVehicle.status} className="text-sm px-3 py-1">
-                  {viewingVehicle.status}
+                  {getVehicleStatusLabel(viewingVehicle.status)}
                 </Badge>
               </div>
             </div>
