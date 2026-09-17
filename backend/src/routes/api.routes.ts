@@ -10,6 +10,7 @@ import dashboardRoutes from './dashboard.routes.js';
 import rentalsRoutes from './rentals.routes.js';
 import financialRoutes from './financial.routes.js';
 import maintenanceRoutes from './maintenance.routes.js';
+import userRoutes from './user.routes.js';
 
 const apiRouter = Router();
 
@@ -39,6 +40,8 @@ apiRouter.use('/dashboard', dashboardRoutes);
 apiRouter.use('/rentals', rentalsRoutes);
 apiRouter.use('/financial', financialRoutes);
 apiRouter.use('/maintenance', maintenanceRoutes);
+
+apiRouter.use('/users', userRoutes);
 
 /**
  * HEALTH CHECK

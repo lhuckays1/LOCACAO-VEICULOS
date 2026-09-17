@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 import { Vehicle, VehicleStatus } from '../types';
 import { Button } from '../components/ui/Button';
@@ -38,7 +38,486 @@ import {
   AlertCircle,
   FileText,
   DollarSign,
+  Upload,
+  Loader2,
+  FileCheck2,
 } from 'lucide-react';
+
+
+type CrlvExtractedData = {
+  plate?: string;
+  renavam?: string;
+  brand?: string;
+  model?: string;
+  version?: string;
+  manufactureYear?: number;
+  modelYear?: number;
+  color?: string;
+  fuel?: string;
+  category?: string;
+  vehicleType?: string;
+  chassis?: string;
+  engine?: string;
+  power?: string;
+  displacement?: string;
+  passengerCapacity?: number;
+};
+
+type CrlvFieldKey = keyof CrlvExtractedData;
+
+type CrlvPdfTextItem = {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type CrlvPdfLine = {
+  items: CrlvPdfTextItem[];
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+};
+
+const normalizeCrlvText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[|]/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\r/g, '')
+    .toUpperCase();
+
+const cleanCrlvValue = (value: string) =>
+  value
+    .replace(/^[\s:;\-–—]+|[\s:;\-–—]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const firstMatch = (text: string, patterns: RegExp[]) => {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return cleanCrlvValue(match[1]);
+  }
+  return '';
+};
+
+const normalizePlateFromCrlv = (value: string) => {
+  const candidate = value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const mercosul = candidate.match(/[A-Z]{3}[0-9][A-Z][0-9]{2}/);
+  if (mercosul) return mercosul[0];
+  const traditional = candidate.match(/[A-Z]{3}[0-9]{4}/);
+  return traditional?.[0] || '';
+};
+
+const normalizeYear = (value: string) => {
+  const year = Number(value);
+  return year >= 1980 && year <= 2036 ? year : undefined;
+};
+
+const mapCrlvFuel = (value: string) => {
+  const v = normalizeCrlvText(value);
+  if (v.includes('ALCOOL') && v.includes('GASOLINA')) return 'FLEX';
+  if (v.includes('ETANOL') && v.includes('GASOLINA')) return 'FLEX';
+  if (v.includes('DIESEL')) return 'DIESEL';
+  if (v.includes('ETANOL') || v.includes('ALCOOL')) return 'ETANOL';
+  if (v.includes('GASOLINA')) return 'GASOLINA';
+  if (v.includes('ELETR')) return 'ELETRICO';
+  if (v.includes('HIBR')) return 'HIBRIDO';
+  if (v.includes('GNV')) return 'GNV';
+  if (v.includes('FLEX')) return 'FLEX';
+  return '';
+};
+
+const mapCrlvVehicleType = (value: string) => {
+  const v = normalizeCrlvText(value);
+  if (v.includes('MOTOCIC')) return 'MOTOCICLETA';
+  if (v.includes('CAMINHAO')) return 'CAMINHÃO LEVE';
+  if (v.includes('PICK') || v.includes('CAMION')) return 'PICKUP';
+  if (v.includes('VAN') || v.includes('MINIVAN')) return 'VAN / MINIVAN';
+  if (v.includes('UTILIT')) return 'UTILITÁRIO';
+  if (v.includes('SUV')) return 'SUV';
+  if (v.includes('PASSAGEIRO') && v.includes('AUTOMOVEL')) return 'CARRO DE PASSEIO';
+  return '';
+};
+
+/**
+ * O campo CATEGORIA do CRLV (ex.: PARTICULAR) é diferente da
+ * categoria operacional do FROTA CRM (ex.: HATCH COMPACTO).
+ * Portanto, não usamos "PARTICULAR" para preencher a categoria operacional.
+ */
+const inferOperationalCategory = (brand: string, model: string, vehicleType: string) => {
+  const value = normalizeCrlvText(`${brand} ${model}`);
+  const type = normalizeCrlvText(vehicleType);
+
+  if (type === 'MOTOCICLETA') return 'UTILITÁRIO / PICKUP';
+  if (type === 'PICKUP' || type === 'UTILITÁRIO') return 'UTILITÁRIO / PICKUP';
+  if (type === 'SUV') return 'SUV COMPACTO';
+  if (type === 'VAN / MINIVAN') return 'MINIVAN';
+
+  // Inferência conservadora apenas para modelos muito conhecidos como hatch.
+  const knownHatches = [
+    'KWID', 'ONIX', 'ARGO', 'HB20', 'POLO', 'GOL', 'UP', 'MOBI',
+    'SANDERO', 'KA', 'FIESTA', 'PALIO', 'UNO', 'C3', '208', 'YARIS HATCH',
+  ];
+  if (knownHatches.some((item) => value.includes(item))) return 'HATCH COMPACTO';
+
+  return '';
+};
+
+const parseBrandModelVersion = (value: string) => {
+  const normalized = cleanCrlvValue(value).replace(/\s+/g, ' ');
+  if (!normalized) return { brand: '', model: '', version: '' };
+
+  const slashParts = normalized.split('/').map((part) => cleanCrlvValue(part)).filter(Boolean);
+
+  if (slashParts.length >= 2) {
+    const brand = slashParts[0];
+    const remainder = slashParts.slice(1).join(' ').trim();
+    const tokens = remainder.split(/\s+/).filter(Boolean);
+    const model = tokens.shift() || '';
+    const version = tokens.join(' ');
+    return { brand, model, version };
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const brand = tokens.shift() || '';
+  const model = tokens.shift() || '';
+  const version = tokens.join(' ');
+  return { brand, model, version };
+};
+
+const extractVin = (value: string) => {
+  const compact = value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const vin = compact.match(/[A-HJ-NPR-Z0-9]{17}/);
+  return vin?.[0] || '';
+};
+
+const groupCrlvPdfItemsIntoLines = (items: CrlvPdfTextItem[]) => {
+  const sorted = [...items].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  const lines: CrlvPdfLine[] = [];
+
+  for (const item of sorted) {
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(item.y - last.y) <= 3.5) {
+      last.items.push(item);
+      last.x = Math.min(last.x, item.x);
+      last.width = Math.max(last.width, item.x + item.width - last.x);
+      last.text = last.items.map((part) => part.text).join(' ');
+      last.y = Math.min(last.y, item.y);
+    } else {
+      lines.push({
+        items: [item],
+        text: item.text,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+      });
+    }
+  }
+
+  return lines
+    .map((line) => ({
+      ...line,
+      items: [...line.items].sort((a, b) => a.x - b.x),
+      text: cleanCrlvValue(line.items.sort((a, b) => a.x - b.x).map((item) => item.text).join(' ')),
+    }))
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+};
+
+const findCrlvLine = (lines: CrlvPdfLine[], pattern: RegExp, minX = -Infinity, maxX = Infinity) =>
+  lines.find((line) => line.x >= minX && line.x <= maxX && pattern.test(normalizeCrlvText(line.text)));
+
+const findValueLineBelow = (
+  lines: CrlvPdfLine[],
+  labelLine: CrlvPdfLine | undefined,
+  options: { xMin?: number; xMax?: number; maxDistance?: number } = {},
+) => {
+  if (!labelLine) return undefined;
+
+  const xMin = options.xMin ?? labelLine.x - 8;
+  const xMax = options.xMax ?? labelLine.x + Math.max(labelLine.width, 60);
+  const maxDistance = options.maxDistance ?? 30;
+
+  return lines
+    .filter((line) => line.y > labelLine.y && line.y - labelLine.y <= maxDistance)
+    .filter((line) => {
+      const lineRight = line.x + line.width;
+      const overlapsX = lineRight >= xMin && line.x <= xMax;
+      return overlapsX;
+    })
+    .sort((a, b) => {
+      const distanceA = a.y - labelLine.y;
+      const distanceB = b.y - labelLine.y;
+      return distanceA - distanceB || a.x - b.x;
+    })[0];
+};
+
+const valueNearLabel = (
+  lines: CrlvPdfLine[],
+  labelPattern: RegExp,
+  options: { labelMinX?: number; labelMaxX?: number; valueMinX?: number; valueMaxX?: number; maxDistance?: number } = {},
+) => {
+  const label = findCrlvLine(lines, labelPattern, options.labelMinX, options.labelMaxX);
+  return findValueLineBelow(lines, label, {
+    xMin: options.valueMinX,
+    xMax: options.valueMaxX,
+    maxDistance: options.maxDistance,
+  });
+};
+
+const parseCrlvPdfItems = (items: CrlvPdfTextItem[]): CrlvExtractedData => {
+  const lines = groupCrlvPdfItemsIntoLines(items);
+  const result: CrlvExtractedData = {};
+
+  // Bloco superior esquerdo
+  const renavamLine = valueNearLabel(lines, /CODIGO\s+RENAVAM/, {
+    labelMinX: 20,
+    labelMaxX: 100,
+    valueMinX: 20,
+    valueMaxX: 115,
+  });
+  const renavam = firstMatch(normalizeCrlvText(renavamLine?.text || ''), [/^(\d{8,11})/]);
+  if (renavam) result.renavam = renavam;
+
+  const plateLine = valueNearLabel(lines, /^PLACA\b/, {
+    labelMinX: 20,
+    labelMaxX: 80,
+    valueMinX: 20,
+    valueMaxX: 95,
+  });
+  const plate = normalizePlateFromCrlv(plateLine?.text || '');
+  if (plate) result.plate = plate;
+
+  const manufactureLine = valueNearLabel(lines, /ANO\s+FABRICACAO/, {
+    labelMinX: 20,
+    labelMaxX: 95,
+    valueMinX: 20,
+    valueMaxX: 95,
+  });
+  const manufactureYear = normalizeYear(firstMatch(manufactureLine?.text || '', [/((?:19|20)\d{2})/]));
+  if (manufactureYear) result.manufactureYear = manufactureYear;
+
+  const modelYearLine = valueNearLabel(lines, /ANO\s+MODELO/, {
+    labelMinX: 95,
+    labelMaxX: 155,
+    valueMinX: 95,
+    valueMaxX: 155,
+  });
+  const modelYear = normalizeYear(firstMatch(modelYearLine?.text || '', [/((?:19|20)\d{2})/]));
+  if (modelYear) result.modelYear = modelYear;
+
+  // Marca / modelo / versão
+  const brandModelLine = valueNearLabel(lines, /MARCA\s*\/\s*MODELO\s*\/\s*VERSAO/, {
+    labelMinX: 20,
+    labelMaxX: 160,
+    valueMinX: 20,
+    valueMaxX: 250,
+    maxDistance: 32,
+  });
+  const parsedVehicle = parseBrandModelVersion(brandModelLine?.text || '');
+  if (parsedVehicle.brand) result.brand = parsedVehicle.brand;
+  if (parsedVehicle.model) result.model = parsedVehicle.model;
+  if (parsedVehicle.version) result.version = parsedVehicle.version;
+
+  // Espécie / tipo
+  const typeLine = valueNearLabel(lines, /ESPECIE\s*\/\s*TIPO/, {
+    labelMinX: 20,
+    labelMaxX: 100,
+    valueMinX: 20,
+    valueMaxX: 190,
+    maxDistance: 32,
+  });
+  const mappedType = mapCrlvVehicleType(typeLine?.text || '');
+  if (mappedType) result.vehicleType = mappedType;
+
+  // Chassi: procuramos o VIN no bloco abaixo de "PLACA ANTERIOR / UF / CHASSI".
+  const plateChassisLine = findCrlvLine(lines, /PLACA\s+ANTERIOR.*CHASSI/, 20, 180);
+  const chassisValueLine = findValueLineBelow(lines, plateChassisLine, {
+    xMin: 20,
+    xMax: 260,
+    maxDistance: 32,
+  });
+  const chassis = extractVin(chassisValueLine?.text || '');
+  if (chassis) result.chassis = chassis;
+
+  // Cor e combustível ficam lado a lado na mesma linha de valores.
+  const colorLabel = findCrlvLine(lines, /COR\s+PREDOMINANTE/, 20, 100);
+  const colorValueLine = findValueLineBelow(lines, colorLabel, {
+    xMin: 20,
+    xMax: 100,
+    maxDistance: 32,
+  });
+  if (colorValueLine) {
+    const leftItems = colorValueLine.items.filter((item) => item.x < 95);
+    const color = cleanCrlvValue(leftItems.map((item) => item.text).join(' '));
+    if (color && !/ALCOOL|GASOLINA|DIESEL|ETANOL|FLEX|ELETR|GNV/.test(normalizeCrlvText(color))) {
+      result.color = color;
+    }
+  }
+
+  const fuelLabel = findCrlvLine(lines, /COMBUSTIVEL/, 95, 170);
+  const fuelValueLine = findValueLineBelow(lines, fuelLabel, {
+    xMin: 95,
+    xMax: 220,
+    maxDistance: 32,
+  });
+  if (fuelValueLine) {
+    const rightItems = fuelValueLine.items.filter((item) => item.x >= 95);
+    const fuel = mapCrlvFuel(rightItems.map((item) => item.text).join(' '));
+    if (fuel) result.fuel = fuel;
+  }
+
+  // Bloco técnico superior direito
+  const categoryLine = valueNearLabel(lines, /^CATEGORIA\b/, {
+    labelMinX: 300,
+    labelMaxX: 410,
+    valueMinX: 300,
+    valueMaxX: 410,
+  });
+  const crlvCategory = cleanCrlvValue(categoryLine?.text || '');
+  // "PARTICULAR" é a categoria legal do CRLV, não a categoria operacional do CRM.
+  // Não copiamos esse valor para formData.category.
+
+  const powerLine = valueNearLabel(lines, /POTENCIA\s*\/\s*CILINDRADA/, {
+    labelMinX: 300,
+    labelMaxX: 450,
+    valueMinX: 300,
+    valueMaxX: 450,
+  });
+  if (powerLine) {
+    const rawPower = cleanCrlvValue(powerLine.text.split('/')[0]);
+    const rawDisplacement = cleanCrlvValue(powerLine.text.split('/').slice(1).join('/'));
+    if (rawPower) result.power = rawPower;
+    if (rawDisplacement) result.displacement = rawDisplacement;
+  }
+
+  const engineLine = valueNearLabel(lines, /^MOTOR\b/, {
+    labelMinX: 300,
+    labelMaxX: 380,
+    valueMinX: 300,
+    valueMaxX: 450,
+  });
+  if (engineLine) {
+    const engine = cleanCrlvValue(engineLine.text).split(/\s+/)[0];
+    if (engine && engine.length >= 4 && !/^CARROCERIA$/i.test(engine)) result.engine = engine;
+  }
+
+  const bodyLine = valueNearLabel(lines, /^CARROCERIA\b/, {
+    labelMinX: 300,
+    labelMaxX: 390,
+    valueMinX: 300,
+    valueMaxX: 450,
+  });
+  // O campo CARROCERIA existe no CRLV, mas não há campo específico equivalente no cadastro atual.
+  void bodyLine;
+  void crlvCategory;
+
+  const capacityLabel = findCrlvLine(lines, /CAPACIDADE/, 480, 570);
+  const capacityLine = findValueLineBelow(lines, capacityLabel, {
+    xMin: 480,
+    xMax: 570,
+    maxDistance: 30,
+  });
+  const capacityMatch = capacityLine?.text.match(/(\d{1,2})\s*[*P]/i);
+  if (capacityMatch?.[1]) result.passengerCapacity = Number(capacityMatch[1]);
+
+  const operationalCategory = inferOperationalCategory(
+    result.brand || '',
+    result.model || '',
+    result.vehicleType || '',
+  );
+  if (operationalCategory) result.category = operationalCategory;
+
+  return result;
+};
+
+/** Fallback para imagens/OCR e PDFs digitalizados. */
+const parseCrlvText = (rawText: string): CrlvExtractedData => {
+  const text = normalizeCrlvText(rawText);
+  const compact = text.replace(/\s+/g, ' ');
+  const result: CrlvExtractedData = {};
+
+  const plate = normalizePlateFromCrlv(
+    firstMatch(compact, [/PLACA\s+(?:EXERCICIO\s+)?([A-Z0-9]{7,8})\b/]),
+  );
+  if (plate) result.plate = plate;
+
+  const renavam = firstMatch(compact, [/CODIGO\s+RENAVAM\s+(\d{8,11})\b/, /RENAVAM\s+(\d{8,11})\b/]).replace(/\D/g, '');
+  if (renavam.length >= 8) result.renavam = renavam.slice(0, 11);
+
+  const years = compact.match(/(?:ANO\s+FABRICACAO).*?((?:19|20)\d{2}).*?(?:ANO\s+MODELO).*?((?:19|20)\d{2})/);
+  if (years?.[1]) result.manufactureYear = normalizeYear(years[1]);
+  if (years?.[2]) result.modelYear = normalizeYear(years[2]);
+
+  const brandModel = firstMatch(compact, [/MARCA\s*\/\s*MODELO\s*\/\s*VERSAO\s+(.+?)(?=\s+ESPECIE\s*\/\s*TIPO\b)/]);
+  const parsedVehicle = parseBrandModelVersion(brandModel);
+  if (parsedVehicle.brand) result.brand = parsedVehicle.brand;
+  if (parsedVehicle.model) result.model = parsedVehicle.model;
+  if (parsedVehicle.version) result.version = parsedVehicle.version;
+
+  const type = firstMatch(compact, [/ESPECIE\s*\/\s*TIPO\s+(.+?)(?=\s+PLACA\s+ANTERIOR\b)/]);
+  const mappedType = mapCrlvVehicleType(type);
+  if (mappedType) result.vehicleType = mappedType;
+
+  const chassis = extractVin(compact);
+  if (chassis) result.chassis = chassis;
+
+  const color = firstMatch(compact, [/COR\s+PREDOMINANTE\s+([A-Z ]+?)(?=\s+COMBUSTIVEL\b)/]);
+  if (color && !/COMBUST|ALCOOL|GASOLINA/.test(color)) result.color = color;
+
+  const fuel = mapCrlvFuel(firstMatch(compact, [/COMBUSTIVEL\s+([A-Z/]+)/]));
+  if (fuel) result.fuel = fuel;
+
+  const engine = firstMatch(compact, [/MOTOR\s+([A-Z0-9]{4,25})\b/]);
+  if (engine && !/CARROCERIA/.test(engine)) result.engine = engine;
+
+  const powerDisplacement = firstMatch(compact, [/POTENCIA\s*\/\s*CILINDRADA\s+([A-Z0-9]+\s*\/\s*[0-9.]+)/]);
+  if (powerDisplacement) {
+    const parts = powerDisplacement.split('/');
+    result.power = cleanCrlvValue(parts[0]);
+    result.displacement = cleanCrlvValue(parts.slice(1).join('/'));
+  }
+
+  const passenger = firstMatch(compact, [/LOTACAO\s+(\d{1,2})P\b/, /CAPACIDADE\s+(\d{1,2})\b/]);
+  if (passenger) result.passengerCapacity = Number(passenger);
+
+  const operationalCategory = inferOperationalCategory(result.brand || '', result.model || '', result.vehicleType || '');
+  if (operationalCategory) result.category = operationalCategory;
+
+  return result;
+};
+
+const getExtractedFieldLabels = (data: CrlvExtractedData) => {
+  const labels: Record<CrlvFieldKey, string> = {
+    plate: 'Placa',
+    renavam: 'RENAVAM',
+    brand: 'Marca',
+    model: 'Modelo',
+    version: 'Versão',
+    manufactureYear: 'Ano fabricação',
+    modelYear: 'Ano modelo',
+    color: 'Cor',
+    fuel: 'Combustível',
+    category: 'Categoria',
+    vehicleType: 'Tipo',
+    chassis: 'Chassi',
+    engine: 'Motor',
+    power: 'Potência',
+    displacement: 'Cilindrada',
+    passengerCapacity: 'Passageiros',
+  };
+
+  return Object.entries(data)
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map(([key, value]) => ({
+      key: key as CrlvFieldKey,
+      label: labels[key as CrlvFieldKey],
+      value: String(value),
+    }));
+};
 
 interface VehiclesPageProps {
   isOpenCreateModal?: boolean;
@@ -65,6 +544,12 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // CRLV / OCR
+  const crlvInputRef = useRef<HTMLInputElement | null>(null);
+  const [isReadingCrlv, setIsReadingCrlv] = useState(false);
+  const [crlvFileName, setCrlvFileName] = useState('');
+  const [crlvExtractedData, setCrlvExtractedData] = useState<CrlvExtractedData | null>(null);
 
   // Detail Modal State
   const [viewingVehicle, setViewingVehicle] = useState<any | null>(null);
@@ -233,6 +718,248 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
     } finally {
       setIsLoadingDetails(false);
     }
+  };
+
+
+  const extractPdfTextItems = async (file: File): Promise<CrlvPdfTextItem[]> => {
+    const pdfjs = await import('pdfjs-dist');
+
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url,
+    ).toString();
+
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+    }).promise;
+
+    const items: CrlvPdfTextItem[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 1 });
+      const content = await page.getTextContent();
+
+      for (const rawItem of content.items as any[]) {
+        if (!rawItem || typeof rawItem.str !== 'string' || !rawItem.str.trim()) continue;
+
+        const transform = rawItem.transform as number[] | undefined;
+        if (!transform || transform.length < 6) continue;
+
+        const height = Math.abs(Number(rawItem.height) || Number(transform[3]) || 0);
+        const x = Number(transform[4]) || 0;
+        const baselineY = Number(transform[5]) || 0;
+        const y = viewport.height - baselineY - height;
+        const width = Number(rawItem.width) || 0;
+
+        items.push({
+          text: rawItem.str,
+          x,
+          y,
+          width,
+          height,
+        });
+      }
+    }
+
+    return items;
+  };
+
+  const runOcr = async (source: File | HTMLCanvasElement) => {
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker('por');
+
+    try {
+      const result = await worker.recognize(source);
+      return result.data.text || '';
+    } finally {
+      await worker.terminate();
+    }
+  };
+
+  const extractTextWithOcrFromPdf = async (file: File): Promise<string> => {
+    const pdfjs = await import('pdfjs-dist');
+
+    // PDF.js 4/5 não possui mais a opção `disableWorker`.
+    // No Vite, apontamos o worker para o arquivo instalado localmente.
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url,
+    ).toString();
+
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+    }).promise;
+
+    let ocrText = '';
+
+    // CRLV normalmente possui poucas páginas. Limitamos a 3 para evitar processamento excessivo.
+    const pagesToRead = Math.min(pdf.numPages, 3);
+
+    for (let pageNumber = 1; pageNumber <= pagesToRead; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 2 });
+
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      if (!context) continue;
+
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+
+      await page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+      }).promise;
+
+      ocrText += `\n${await runOcr(canvas)}`;
+    }
+
+    return ocrText;
+  };
+
+  const handleCrlvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    // Permite selecionar o mesmo arquivo novamente depois.
+    e.target.value = '';
+
+    if (!file) return;
+
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      toastError(
+        'Arquivo não suportado',
+        'Selecione um CRLV em PDF, JPG, PNG ou WEBP.'
+      );
+      return;
+    }
+
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toastError(
+        'Arquivo muito grande',
+        'O CRLV deve ter no máximo 10 MB.'
+      );
+      return;
+    }
+
+    setIsReadingCrlv(true);
+    setCrlvFileName(file.name);
+    setCrlvExtractedData(null);
+
+    try {
+      let extractedText = '';
+      let extracted: CrlvExtractedData = {};
+
+      if (file.type === 'application/pdf') {
+        // CRLV digital: usamos as coordenadas dos elementos do PDF.
+        // Isso evita o problema de o PDF entregar primeiro todos os rótulos
+        // e depois todos os valores, como acontece neste modelo do DETRAN-MG.
+        const pdfItems = await extractPdfTextItems(file);
+        extractedText = pdfItems.map((item) => item.text).join(' ');
+
+        if (extractedText.replace(/\s+/g, '').length >= 80) {
+          extracted = parseCrlvPdfItems(pdfItems);
+        }
+
+        // PDFs digitalizados ou PDFs com texto insuficiente: OCR como fallback.
+        if (extractedText.replace(/\s+/g, '').length < 80 || getExtractedFieldLabels(extracted).length === 0) {
+          toastInfo(
+            'CRLV digitalizado detectado',
+            'O sistema está realizando OCR da imagem do documento.'
+          );
+          extractedText = await extractTextWithOcrFromPdf(file);
+          extracted = parseCrlvText(extractedText);
+        }
+      } else {
+        extractedText = await runOcr(file);
+        extracted = parseCrlvText(extractedText);
+      }
+
+      if (!extractedText.trim()) {
+        throw new Error(
+          'Não foi possível encontrar texto no documento. Tente uma foto mais nítida ou outro arquivo.'
+        );
+      }
+      const count = getExtractedFieldLabels(extracted).length;
+
+      if (count === 0) {
+        throw new Error(
+          'O documento foi lido, mas nenhum campo de veículo foi identificado com segurança.'
+        );
+      }
+
+      setCrlvExtractedData(extracted);
+
+      toastSuccess(
+        'CRLV processado',
+        `${count} campo(s) identificado(s). Confira os dados antes de aplicar.`
+      );
+    } catch (err: any) {
+      console.error('Erro ao processar CRLV:', err);
+      toastError(
+        'Não foi possível ler o CRLV',
+        err?.message || 'Verifique a qualidade do documento e tente novamente.'
+      );
+      setCrlvExtractedData(null);
+    } finally {
+      setIsReadingCrlv(false);
+    }
+  };
+
+  const applyCrlvDataToForm = () => {
+    if (!crlvExtractedData) return;
+
+    setFormData((current) => ({
+      ...current,
+      ...(crlvExtractedData.plate ? { plate: crlvExtractedData.plate } : {}),
+      ...(crlvExtractedData.brand ? { brand: crlvExtractedData.brand.toUpperCase() } : {}),
+      ...(crlvExtractedData.model ? { model: crlvExtractedData.model.toUpperCase() } : {}),
+      ...(crlvExtractedData.version ? { version: crlvExtractedData.version.toUpperCase() } : {}),
+      ...(crlvExtractedData.manufactureYear
+        ? { manufactureYear: crlvExtractedData.manufactureYear }
+        : {}),
+      ...(crlvExtractedData.modelYear
+        ? { modelYear: crlvExtractedData.modelYear }
+        : {}),
+      ...(crlvExtractedData.color ? { color: crlvExtractedData.color.toUpperCase() } : {}),
+      ...(crlvExtractedData.fuel ? { fuel: crlvExtractedData.fuel } : {}),
+      ...(crlvExtractedData.category ? { category: crlvExtractedData.category } : {}),
+      ...(crlvExtractedData.vehicleType ? { vehicleType: crlvExtractedData.vehicleType } : {}),
+      ...(crlvExtractedData.renavam ? { renavam: crlvExtractedData.renavam } : {}),
+      ...(crlvExtractedData.chassis ? { chassis: crlvExtractedData.chassis } : {}),
+      ...(crlvExtractedData.engine ? { engine: crlvExtractedData.engine.toUpperCase() } : {}),
+      ...(crlvExtractedData.power ? { power: crlvExtractedData.power.toUpperCase() } : {}),
+      ...(crlvExtractedData.displacement
+        ? { displacement: crlvExtractedData.displacement.toUpperCase() }
+        : {}),
+      ...(crlvExtractedData.passengerCapacity
+        ? { passengerCapacity: crlvExtractedData.passengerCapacity }
+        : {}),
+    }));
+
+    setCrlvExtractedData(null);
+
+    toastSuccess(
+      'Dados aplicados ao formulário',
+      'Revise os campos importados e complete os dados financeiros manualmente.'
+    );
+  };
+
+  const clearCrlvImport = () => {
+    setCrlvExtractedData(null);
+    setCrlvFileName('');
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -557,12 +1284,12 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
         </div>
       )}
 
-      {/* Vehicle Registration & Edit Modal - 100% Manual */}
+      {/* Vehicle Registration & Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         title={isEditing ? `Editar Veículo ${formData.plate}` : 'Cadastrar Novo Veículo na Frota'}
-        description="Preenchimento manual dos dados cadastrais, técnicos e financeiros do veículo."
+        description="Importe o CRLV para preencher os dados cadastrais e técnicos automaticamente, ou faça o preenchimento manual."
         maxWidth="4xl"
       >
         <form onSubmit={handleFormSubmit} className="space-y-6">
@@ -624,7 +1351,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3 pt-1">
                 <input
                   type="text"
                   placeholder="EX: BRA2E19 OU ABC-1234"
@@ -635,13 +1362,107 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                     setFormData({ ...formData, plate: raw });
                   }}
                   required
-                  className="w-full sm:w-64 bg-slate-950 border border-slate-700 text-white font-mono font-black text-xl tracking-widest px-4 py-2.5 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-600"
+                  className="w-full lg:w-64 bg-slate-950 border border-slate-700 text-white font-mono font-black text-xl tracking-widest px-4 py-2.5 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-600"
                 />
-                <span className="text-xs text-slate-400 self-center">
-                  Preenchimento manual — sem integrações externas
-                </span>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={crlvInputRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                    onChange={handleCrlvImport}
+                    className="hidden"
+                  />
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => crlvInputRef.current?.click()}
+                    disabled={isReadingCrlv}
+                    className="gap-2 font-bold"
+                  >
+                    {isReadingCrlv ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4" />
+                    )}
+                    {isReadingCrlv ? 'Lendo CRLV...' : 'Importar CRLV'}
+                  </Button>
+
+                  <span className="text-[11px] text-slate-400">
+                    PDF, JPG ou PNG — até 10 MB
+                  </span>
+                </div>
               </div>
+
+              {crlvFileName && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
+                  <FileCheck2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="truncate max-w-[360px]">{crlvFileName}</span>
+                </div>
+              )}
             </div>
+
+            {crlvExtractedData && (
+              <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <FileText className="w-5 h-5 text-emerald-700 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
+                        Dados encontrados no CRLV
+                      </h4>
+                      <p className="text-[11px] text-emerald-800 mt-0.5">
+                        Confira os dados abaixo antes de aplicar ao formulário.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearCrlvImport}
+                    >
+                      Limpar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={applyCrlvDataToForm}
+                      className="gap-2 font-bold"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Aplicar ao formulário
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {getExtractedFieldLabels(crlvExtractedData).map((field) => (
+                    <div
+                      key={field.key}
+                      className="bg-white border border-emerald-100 rounded-lg p-2.5"
+                    >
+                      <span className="block text-[9px] uppercase font-black tracking-wider text-slate-400">
+                        {field.label}
+                      </span>
+                      <span className="block mt-0.5 text-xs font-bold text-slate-800 break-words">
+                        {field.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  A leitura é automática por texto/OCR. Sempre confira o documento original antes de salvar,
+                  principalmente placa, RENAVAM e chassi.
+                </p>
+              </div>
+            )}
 
             {/* Marca, Modelo e Versão */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

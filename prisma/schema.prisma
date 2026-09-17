@@ -166,6 +166,54 @@ enum RecurringFrequency {
   MENSAL
   ANUAL
 }
+enum Permission {
+  DASHBOARD_VIEW
+
+  CLIENTS_VIEW
+  CLIENTS_CREATE
+  CLIENTS_EDIT
+  CLIENTS_DELETE
+
+  VEHICLES_VIEW
+  VEHICLES_CREATE
+  VEHICLES_EDIT
+  VEHICLES_DELETE
+
+  RENTALS_VIEW
+  RENTALS_CREATE
+  RENTALS_EDIT
+  RENTALS_DELETE
+
+  FINANCIAL_VIEW
+  FINANCIAL_CREATE
+  FINANCIAL_EDIT
+  FINANCIAL_DELETE
+
+  MAINTENANCE_VIEW
+  MAINTENANCE_CREATE
+  MAINTENANCE_EDIT
+  MAINTENANCE_DELETE
+
+  FINES_VIEW
+  FINES_CREATE
+  FINES_EDIT
+  FINES_DELETE
+
+  INCIDENTS_VIEW
+  INCIDENTS_CREATE
+  INCIDENTS_EDIT
+  INCIDENTS_DELETE
+
+  INSPECTIONS_VIEW
+  INSPECTIONS_CREATE
+  INSPECTIONS_EDIT
+  INSPECTIONS_DELETE
+
+  REPORTS_VIEW
+
+  SETTINGS_VIEW
+  SETTINGS_MANAGE
+}
 
 model Company {
   id String @id @default(uuid())
@@ -236,11 +284,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // RELAÇÃO OPCIONAL
+  // RELAÇÕES
   company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   auditLogs            AuditLog[]
   financialSettlements FinancialSettlement[]
+  permissions          UserPermission[]
 
   @@index([companyId])
   @@index([role])
@@ -887,6 +936,20 @@ model RecurringTransaction {
   @@index([companyId])
   @@index([active])
   @@map("recurring_transactions")
+}
+
+model UserPermission {
+  id         String     @id @default(uuid())
+  userId     String
+  permission Permission
+  createdAt  DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([userId])
+  @@index([permission])
+  @@map("user_permissions")
 }
 
 // ============================================================
