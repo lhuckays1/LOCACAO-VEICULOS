@@ -31,7 +31,6 @@ import {
   Gauge,
   Clock,
   ArrowRight,
-  Trash2,
 } from 'lucide-react';
 
 interface RentalDetailModalProps {
@@ -42,15 +41,6 @@ interface RentalDetailModalProps {
   onOpenReturnModal: (rental: Rental) => void;
   onOpenCancelModal: (rental: Rental) => void;
 }
-
-type RentalPaymentWithBalance = RentalPayment & {
-  saldo?: number;
-};
-
-const getPaymentBalance = (payment: RentalPayment): number => {
-  const paymentWithBalance = payment as RentalPaymentWithBalance;
-  return Number(paymentWithBalance.saldo ?? payment.valor) || 0;
-};
 
 export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
   rental,
@@ -69,9 +59,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [paymentMileage, setPaymentMileage] = useState<number>(0);
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
-  const [isDeletingRental, setIsDeletingRental] = useState(false);
 
   // Update Caução state
   const [isUpdatingCaucao, setIsUpdatingCaucao] = useState(false);
@@ -87,16 +75,9 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
     setPaymentMethod('PIX');
     setPaymentDate(new Date().toISOString().split('T')[0]);
     setPaymentNotes('');
-    setPaymentAmount(getPaymentBalance(payment));
-    setPaymentMileage(
-      Number(
-        rental.vehicle?.currentMileage ??
-        rental.kmFinal ??
-        rental.kmInicial ??
-        rental.initialMileage ??
-        0
-      ) || 0
-    );
+
+    const paymentWithBalance = payment as RentalPayment & { saldo?: number };
+    setPaymentAmount(Number(paymentWithBalance.saldo ?? payment.valor) || 0);
   };
 
   const handleConfirmPayment = async (e: React.FormEvent) => {
@@ -104,27 +85,9 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
     if (!payingPayment) return;
 
     const amount = Number(paymentAmount);
-    const kmAtual = Number(paymentMileage);
-    const minimumKm = Math.max(
-      Number(rental.vehicle?.currentMileage ?? 0),
-      Number(rental.kmInicial ?? rental.initialMileage ?? 0)
-    );
 
     if (!Number.isFinite(amount) || amount <= 0) {
       toastError('Valor inválido', 'Informe um valor de pagamento maior que zero.');
-      return;
-    }
-
-    if (!Number.isInteger(kmAtual) || kmAtual < 0) {
-      toastError('Quilometragem inválida', 'Informe uma quilometragem inteira válida.');
-      return;
-    }
-
-    if (kmAtual < minimumKm) {
-      toastError(
-        'Quilometragem inválida',
-        `O KM informado não pode ser menor que ${minimumKm.toLocaleString('pt-BR')} km.`
-      );
       return;
     }
 
@@ -135,7 +98,6 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
         dataPagamento: paymentDate,
         observacoes: paymentNotes,
         valorPago: amount,
-        kmAtual,
       });
 
       const updatedPayment = response?.data;
@@ -153,37 +115,6 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
       toastError('Erro ao registrar pagamento', err.message);
     } finally {
       setIsSubmittingPay(false);
-    }
-  };
-
-  const handleDeleteRental = async () => {
-    if (!rental || isDeletingRental) return;
-
-    const contract = rental.codigoContrato || rental.rentalNumber;
-    const confirmed = window.confirm(
-      `ATENÇÃO\n\nDeseja realmente EXCLUIR a locação ${contract}?\n\n` +
-      'ATENÇÃO: a locação, parcelas, recebimentos, caução, vistorias, registros de KM e demais dados vinculados serão removidos definitivamente.\n\n' +
-      'Esta ação não poderá ser desfeita.'
-    );
-
-    if (!confirmed) return;
-
-    setIsDeletingRental(true);
-    try {
-      await api.rentals.delete(rental.id);
-      toastSuccess(
-        'Locação excluída!',
-        `O contrato ${contract} foi removido e o veículo foi liberado.`
-      );
-      onClose();
-      onRefresh();
-    } catch (err: any) {
-      toastError(
-        'Não foi possível excluir',
-        err.message || 'Não foi possível excluir a locação.'
-      );
-    } finally {
-      setIsDeletingRental(false);
     }
   };
 
@@ -217,29 +148,6 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
   const contractCode = rental.codigoContrato || rental.rentalNumber;
   const isCancelable = rental.status === 'RASCUNHO' || rental.status === 'AGENDADA' || rental.status === 'DRAFT' || rental.status === 'SCHEDULED';
   const isActive = rental.status === 'ATIVA' || rental.status === 'ACTIVE';
-  const mileageControl = rental as Rental & {
-    franquiaKmMensal?: number;
-    kmRodadoCiclo?: number;
-    kmRestanteCiclo?: number;
-    kmExcedenteCiclo?: number;
-    kmCicloInicio?: string | Date | null;
-    kmCicloFim?: string | Date | null;
-    numeroCicloKm?: number;
-  };
-  const franquiaMensal = Number(
-    mileageControl.franquiaKmMensal ?? rental.mileageAllowance ?? 6000
-  );
-  const kmRodadoCiclo = Number(mileageControl.kmRodadoCiclo ?? 0);
-  const kmRestanteCiclo = Number(
-    mileageControl.kmRestanteCiclo ?? Math.max(0, franquiaMensal - kmRodadoCiclo)
-  );
-  const kmExcedenteCiclo = Number(mileageControl.kmExcedenteCiclo ?? 0);
-  const kmCicloInicio = mileageControl.kmCicloInicio
-    ? formatDate(String(mileageControl.kmCicloInicio))
-    : '—';
-  const kmCicloFim = mileageControl.kmCicloFim
-    ? formatDate(String(mileageControl.kmCicloFim))
-    : '—';
 
   return (
     <>
@@ -295,17 +203,6 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                   Cancelar Locação
                 </Button>
               )}
-              <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleDeleteRental}
-                  isLoading={isDeletingRental}
-                  className="font-bold text-xs gap-1.5"
-                  title="Excluir locação criada por engano"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Excluir Locação
-                </Button>
             </div>
           </div>
 
@@ -420,44 +317,6 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                   ) : (
                     <p className="text-slate-400 italic">Veículo não vinculado</p>
                   )}
-                </div>
-              </div>
-
-              {/* Controle de Franquia Mensal de KM */}
-              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/70 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 font-bold text-blue-950 uppercase text-[11px] tracking-wider">
-                    <Gauge className="w-4 h-4 text-blue-600" />
-                    Controle de Franquia Mensal
-                  </div>
-                  <Badge variant={kmExcedenteCiclo > 0 ? 'danger' : 'success'}>
-                    {kmExcedenteCiclo > 0 ? 'EXCEDENTE' : 'DENTRO DA FRANQUIA'}
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <div className="text-[10px] text-blue-700 uppercase font-semibold">Franquia / mês</div>
-                    <div className="font-black text-blue-950 text-sm">{maskMileage(franquiaMensal)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-blue-700 uppercase font-semibold">Rodado no ciclo</div>
-                    <div className="font-black text-slate-900 text-sm">{maskMileage(kmRodadoCiclo)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-blue-700 uppercase font-semibold">Saldo do ciclo</div>
-                    <div className="font-black text-emerald-700 text-sm">{maskMileage(kmRestanteCiclo)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-blue-700 uppercase font-semibold">Excedente</div>
-                    <div className={`font-black text-sm ${kmExcedenteCiclo > 0 ? 'text-rose-700' : 'text-slate-900'}`}>
-                      {maskMileage(kmExcedenteCiclo)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-blue-900 border-t border-blue-200 pt-2">
-                  <strong>Ciclo atual:</strong> {kmCicloInicio} até {kmCicloFim}. A franquia é renovada a cada mês e o saldo não é acumulado para o próximo ciclo.
                 </div>
               </div>
 
@@ -623,9 +482,9 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                             <div className="font-bold text-slate-900">
                               {maskCurrency(payment.valor)}
                             </div>
-                            {payment.status === 'PARCIAL' && (payment as RentalPaymentWithBalance).saldo !== undefined && (
+                            {payment.status === 'PARCIAL' && payment.saldo !== undefined && (
                               <div className="text-[10px] text-amber-700 mt-0.5">
-                                Saldo: {maskCurrency(getPaymentBalance(payment))}
+                                Saldo: {maskCurrency(payment.saldo)}
                               </div>
                             )}
                           </td>
@@ -813,7 +672,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
                 <div className="text-[10px] uppercase font-bold text-amber-700">Saldo Atual</div>
                 <div className="text-sm font-black text-amber-800 mt-0.5">
-                  {maskCurrency(getPaymentBalance(payingPayment))}
+                  {maskCurrency(Number(payingPayment.saldo ?? payingPayment.valor) || 0)}
                 </div>
               </div>
             </div>
@@ -833,25 +692,10 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
               <button
                 type="button"
                 className="font-bold text-emerald-700 hover:text-emerald-800"
-                onClick={() => setPaymentAmount(getPaymentBalance(payingPayment))}
+                onClick={() => setPaymentAmount(Number(payingPayment.saldo ?? payingPayment.valor) || 0)}
               >
                 Preencher saldo total
               </button>
-            </div>
-
-            <Input
-              label="KM ATUAL DO VEÍCULO"
-              type="number"
-              min="0"
-              step="1"
-              value={paymentMileage}
-              onChange={(e) => setPaymentMileage(parseInt(e.target.value, 10) || 0)}
-              required
-            />
-
-            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-[10px] text-blue-900">
-              <strong>Controle de manutenção:</strong> a quilometragem informada será registrada no histórico do veículo
-              e atualizada no KM atual da frota.
             </div>
 
             <Select

@@ -22,6 +22,13 @@ router.post(
   (req, res, next) => rentalsController.create(req, res, next)
 );
 
+// Delete rental permanently (only ADMIN/MANAGER)
+router.delete(
+  '/:id',
+  authorize(['ADMIN', 'MANAGER']),
+  (req, res, next) => rentalsController.delete(req, res, next)
+);
+
 // Cancel rental (only RASCUNHO or AGENDADA)
 router.post(
   '/:id/cancel',

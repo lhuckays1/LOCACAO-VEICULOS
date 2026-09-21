@@ -131,96 +131,6 @@ export class RentalsController {
     };
   }
 
-  private getMonthlyMileageControl(rental: any, referenceDate?: Date) {
-    const allowance = Math.max(0, Number(rental.mileageAllowance ?? 6000));
-    const startDate = new Date(rental.startDate);
-    const reference = referenceDate ? new Date(referenceDate) : new Date();
-
-    if (Number.isNaN(startDate.getTime())) {
-      return {
-        allowance,
-        cycleStart: null,
-        cycleEnd: null,
-        used: 0,
-        remaining: allowance,
-        excess: 0,
-        cycleNumber: 1,
-      };
-    }
-
-    // A franquia é renovada no aniversário mensal do início da locação.
-    // Ex.: início em 27/08 -> ciclos 27/08-26/09, 27/09-26/10 etc.
-    let months =
-      (reference.getFullYear() - startDate.getFullYear()) * 12 +
-      (reference.getMonth() - startDate.getMonth());
-
-    const buildCycleStart = (monthOffset: number) => {
-      const result = new Date(startDate);
-      const originalDay = startDate.getDate();
-      result.setDate(1);
-      result.setMonth(result.getMonth() + monthOffset);
-      const lastDay = new Date(
-        result.getFullYear(),
-        result.getMonth() + 1,
-        0
-      ).getDate();
-      result.setDate(Math.min(originalDay, lastDay));
-      return result;
-    };
-
-    let cycleStart = buildCycleStart(months);
-    if (cycleStart > reference) {
-      months -= 1;
-      cycleStart = buildCycleStart(months);
-    }
-
-    const cycleEnd = buildCycleStart(months + 1);
-    cycleEnd.setMilliseconds(cycleEnd.getMilliseconds() - 1);
-
-    const logs = Array.isArray(rental.vehicle?.mileageLogs)
-      ? rental.vehicle.mileageLogs
-      : [];
-
-    const logsBeforeCycle = logs
-      .filter((log: any) => {
-        const date = new Date(log.date);
-        return !Number.isNaN(date.getTime()) && date <= cycleStart;
-      })
-      .sort((a: any, b: any) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-
-    const baseline = Number(
-      logsBeforeCycle[0]?.mileage ?? rental.initialMileage ?? 0
-    );
-    const latestMileageAtReference = logs
-      .filter((log: any) => {
-        const date = new Date(log.date);
-        return !Number.isNaN(date.getTime()) && date <= reference;
-      })
-      .sort((a: any, b: any) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      )[0];
-
-    const currentMileage = rental.actualEndDate
-      ? Number(latestMileageAtReference?.mileage ?? rental.finalMileage ?? baseline)
-      : Number(rental.vehicle?.currentMileage ?? latestMileageAtReference?.mileage ?? baseline);
-
-    const used = Math.max(0, currentMileage - baseline);
-    const remaining = Math.max(0, allowance - used);
-    const excess = Math.max(0, used - allowance);
-
-    return {
-      allowance,
-      cycleStart,
-      cycleEnd,
-      used,
-      remaining,
-      excess,
-      cycleNumber: Math.max(1, months + 1),
-    };
-  }
-
   private formatRental(rental: any, overduePaymentIds: Set<string> = new Set()) {
     const effectiveStatus =
       rental.status === 'ACTIVE' && overduePaymentIds.size > 0
@@ -298,26 +208,6 @@ export class RentalsController {
           }
         : null,
 
-      // Controle de franquia mensal: o saldo é renovado a cada aniversário
-      // da locação e nunca é acumulado para o mês seguinte.
-      ...(() => {
-        const mileageControl = this.getMonthlyMileageControl(
-          rental,
-          rental.actualEndDate ? new Date(rental.actualEndDate) : new Date()
-        );
-
-        return {
-          franquiaKmMensal: mileageControl.allowance,
-          kmFranquiaMensal: mileageControl.allowance,
-          kmCicloInicio: mileageControl.cycleStart,
-          kmCicloFim: mileageControl.cycleEnd,
-          kmRodadoCiclo: mileageControl.used,
-          kmRestanteCiclo: mileageControl.remaining,
-          kmExcedenteCiclo: mileageControl.excess,
-          numeroCicloKm: mileageControl.cycleNumber,
-        };
-      })(),
-
       startDate: rental.startDate,
       dataInicio: rental.startDate,
       endDate: rental.endDate,
@@ -381,24 +271,13 @@ export class RentalsController {
     };
   }
 
-  private parseDateOnlyToUtcNoon(value: string): Date {
-    const raw = String(value || '').trim();
-    const datePart = raw.slice(0, 10);
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-      return new Date(NaN);
-    }
-
-    return new Date(`${datePart}T12:00:00.000Z`);
-  }
-
   private calculateInstallmentDate(
     startDateStr: string,
     periodIndex: number,
     tipoCobranca: string,
     diaVencimento: number
   ): string {
-    const date = this.parseDateOnlyToUtcNoon(startDateStr);
+    const date = new Date(startDateStr);
 
     if (Number.isNaN(date.getTime())) {
       return new Date().toISOString().split('T')[0];
@@ -550,14 +429,7 @@ export class RentalsController {
         },
         include: {
           client: true,
-          vehicle: {
-            include: {
-              mileageLogs: {
-                orderBy: { date: 'desc' },
-                take: 100,
-              },
-            },
-          },
+          vehicle: true,
           rentalPayments: {
             orderBy: {
               numeroParcela: 'asc',
@@ -653,14 +525,7 @@ export class RentalsController {
         },
         include: {
           client: true,
-          vehicle: {
-            include: {
-              mileageLogs: {
-                orderBy: { date: 'desc' },
-                take: 100,
-              },
-            },
-          },
+          vehicle: true,
           rentalPayments: {
             orderBy: {
               numeroParcela: 'asc',
@@ -759,8 +624,8 @@ export class RentalsController {
         return;
       }
 
-      const startDateObj = this.parseDateOnlyToUtcNoon(startDate);
-      const endDateObj = this.parseDateOnlyToUtcNoon(endDate);
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
 
       if (
         Number.isNaN(startDateObj.getTime()) ||
@@ -919,7 +784,7 @@ export class RentalsController {
           parsed.franquiaKm ??
             parsed.mileageAllowance ??
             vehicle.mileageAllowance ??
-            6000
+            4000
         );
 
         const valorKmExcedente = Number(
@@ -1232,170 +1097,6 @@ export class RentalsController {
   }
 
   /**
-   * DELETE /api/rentals/:id
-   * Exclusão definitiva de uma locação.
-   * A operação remove também os registros financeiros, parcelas, vistorias,
-   * contratos e registros de KM vinculados, dentro de uma única transação.
-   */
-  async delete(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const companyId = req.user!.companyId;
-      const { id } = req.params;
-
-      const rental = await prisma.rental.findFirst({
-        where: {
-          companyId,
-          OR: [
-            { id },
-            { rentalNumber: id },
-            { codigoContrato: id },
-          ],
-        },
-        include: {
-          vehicle: {
-            select: {
-              id: true,
-              currentMileage: true,
-              status: true,
-            },
-          },
-          rentalPayments: {
-            include: {
-              financialTransaction: {
-                include: {
-                  settlements: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!rental) {
-        res.status(404).json({
-          error: 'RENTAL_NOT_FOUND',
-          message: 'Locação não encontrada.',
-        });
-        return;
-      }
-
-      const deleted = await prisma.$transaction(
-        async (tx) => {
-          const previousMileageLog = await tx.vehicleMileage.findFirst({
-            where: {
-              vehicleId: rental.vehicleId,
-              date: { lt: rental.startDate },
-            },
-            orderBy: { date: 'desc' },
-            select: { mileage: true },
-          });
-
-          await tx.auditLog.create({
-            data: {
-              companyId,
-              userId: req.user!.userId,
-              action: 'DELETE',
-              entity: 'RENTAL',
-              entityId: rental.id,
-              oldData: JSON.stringify({
-                rentalNumber: rental.rentalNumber,
-                status: rental.status,
-                clientId: rental.clientId,
-                vehicleId: rental.vehicleId,
-              }),
-              newData: JSON.stringify({
-                action: 'DELETE_RENTAL',
-                reason: 'LOCAÇÃO CRIADA POR ENGANO',
-              }),
-            },
-          });
-
-          const financialTransactions = await tx.financialTransaction.findMany({
-            where: { rentalId: rental.id },
-            select: { id: true },
-          });
-
-          if (financialTransactions.length > 0) {
-            await tx.financialSettlement.deleteMany({
-              where: {
-                transactionId: {
-                  in: financialTransactions.map((item) => item.id),
-                },
-              },
-            });
-
-            await tx.financialTransaction.deleteMany({
-              where: { rentalId: rental.id },
-            });
-          }
-
-          await tx.rentalPayment.deleteMany({
-            where: { rentalId: rental.id },
-          });
-
-          await tx.payment.updateMany({
-            where: { rentalId: rental.id },
-            data: { rentalId: null },
-          });
-
-          await tx.inspection.deleteMany({
-            where: { rentalId: rental.id },
-          });
-
-          await tx.contract.deleteMany({
-            where: { rentalId: rental.id },
-          });
-
-          // Remove somente os registros de KM gerados por esta locação.
-          await tx.vehicleMileage.deleteMany({
-            where: {
-              vehicleId: rental.vehicleId,
-              notes: { contains: rental.rentalNumber },
-            },
-          });
-
-          await tx.rental.delete({
-            where: { id: rental.id },
-          });
-
-          // Se o veículo estava sendo ocupado por esta locação, devolve o status
-          // para DISPONÍVEL e restaura o último odômetro conhecido antes do contrato.
-          if (rental.vehicle.status === 'RENTED' || rental.vehicle.status === 'RESERVED') {
-            await tx.vehicle.update({
-              where: { id: rental.vehicleId },
-              data: {
-                status: 'AVAILABLE',
-                currentMileage:
-                  previousMileageLog?.mileage ?? rental.initialMileage,
-              },
-            });
-          }
-
-          return {
-            rentalNumber: rental.rentalNumber,
-            vehicleId: rental.vehicleId,
-          };
-        },
-        {
-          maxWait: 10000,
-          timeout: 30000,
-        }
-      );
-
-      res.json({
-        message: `Locação ${deleted.rentalNumber} excluída com sucesso. O veículo foi liberado para a frota.`,
-        data: deleted,
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  /**
    * POST /api/rentals/:id/cancel
    */
   async cancel(
@@ -1416,14 +1117,6 @@ export class RentalsController {
             { rentalNumber: id },
             { codigoContrato: id },
           ],
-        },
-        include: {
-          vehicle: {
-            select: {
-              id: true,
-              currentMileage: true,
-            },
-          },
         },
       });
 
@@ -1826,33 +1519,10 @@ export class RentalsController {
         ? Number(rawValorPago)
         : NaN;
 
-      const rawKmAtual = (req.body as any)?.kmAtual;
-      const hasKmAtual =
-        rawKmAtual !== undefined &&
-        rawKmAtual !== null &&
-        String(rawKmAtual).trim() !== '';
-
-      const kmAtualInformado = hasKmAtual
-        ? Number(rawKmAtual)
-        : NaN;
-
       if (hasValorPago && (!Number.isFinite(valorPagoInformado) || valorPagoInformado <= 0)) {
         res.status(400).json({
           error: 'INVALID_PAYMENT_AMOUNT',
           message: 'O valor pago deve ser maior que zero.',
-        });
-        return;
-      }
-
-      if (
-        hasKmAtual &&
-        (!Number.isFinite(kmAtualInformado) ||
-          !Number.isInteger(kmAtualInformado) ||
-          kmAtualInformado < 0)
-      ) {
-        res.status(400).json({
-          error: 'INVALID_CURRENT_MILEAGE',
-          message: 'A quilometragem atual deve ser um número inteiro válido.',
         });
         return;
       }
@@ -1865,14 +1535,6 @@ export class RentalsController {
             { rentalNumber: id },
             { codigoContrato: id },
           ],
-        },
-        include: {
-          vehicle: {
-            select: {
-              id: true,
-              currentMileage: true,
-            },
-          },
         },
       });
 
@@ -2102,23 +1764,6 @@ export class RentalsController {
 
       const isFullyPaid = newRemaining <= 0.005;
 
-      if (hasKmAtual) {
-        const minimumKm = Math.max(
-          Number(rental.vehicle?.currentMileage ?? 0),
-          Number(rental.initialMileage ?? 0)
-        );
-
-        if (kmAtualInformado < minimumKm) {
-          res.status(400).json({
-            error: 'INVALID_CURRENT_MILEAGE',
-            message:
-              `A quilometragem informada (${kmAtualInformado} km) não pode ser ` +
-              `inferior à quilometragem atual do veículo ou inicial da locação (${minimumKm} km).`,
-          });
-          return;
-        }
-      }
-
       const newPaymentStatus = isFullyPaid
         ? 'PAGO'
         : 'PARCIAL';
@@ -2129,8 +1774,7 @@ export class RentalsController {
           ? 'OVERDUE'
           : 'PARTIAL';
 
-      const updated = await prisma.$transaction(
-        async (tx) => {
+      const updated = await prisma.$transaction(async (tx) => {
         const updatedPayment = await tx.rentalPayment.update({
           where: {
             id: payment.id,
@@ -2194,56 +1838,6 @@ export class RentalsController {
           },
         });
 
-        if (hasKmAtual) {
-          const currentVehicle = await tx.vehicle.findUnique({
-            where: {
-              id: rental.vehicleId,
-            },
-            select: {
-              currentMileage: true,
-            },
-          });
-
-          const transactionMinimumKm = Math.max(
-            Number(currentVehicle?.currentMileage ?? 0),
-            Number(rental.initialMileage ?? 0)
-          );
-
-          if (kmAtualInformado < transactionMinimumKm) {
-            throw new Error(
-              `A quilometragem informada (${kmAtualInformado} km) não pode ser inferior à quilometragem atual do veículo (${transactionMinimumKm} km).`
-            );
-          }
-
-          if (kmAtualInformado > Number(currentVehicle?.currentMileage ?? 0)) {
-            await tx.vehicle.update({
-              where: {
-                id: rental.vehicleId,
-              },
-              data: {
-                currentMileage: kmAtualInformado,
-              },
-            });
-          }
-
-          await tx.vehicleMileage.create({
-            data: {
-              vehicle: {
-                connect: {
-                  id: rental.vehicleId,
-                },
-              },
-              mileage: kmAtualInformado,
-              date: paymentDateObj,
-              type: 'MANUAL',
-              notes:
-                `KM INFORMADO NO RECEBIMENTO - LOCAÇÃO ${rental.rentalNumber} - ` +
-                `PARCELA ${payment.numeroParcela}`,
-              createdBy: req.user!.userId,
-            },
-          });
-        }
-
         await tx.auditLog.create({
           data: {
             companyId,
@@ -2272,7 +1866,6 @@ export class RentalsController {
               dataPagamento: paymentDate,
               diasAtraso: daysLate,
               diasAposCarencia: chargeableDays,
-              kmAtual: hasKmAtual ? kmAtualInformado : null,
             }),
           },
         });
@@ -2281,12 +1874,7 @@ export class RentalsController {
           updatedPayment,
           updatedTransaction,
         };
-      },
-      {
-        maxWait: 10000,
-        timeout: 30000,
-      }
-    );
+      });
 
       const freshPayment =
         await prisma.rentalPayment.findUnique({

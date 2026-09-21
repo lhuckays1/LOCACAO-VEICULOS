@@ -31,6 +31,7 @@ import {
   AlertCircle,
   Eye,
   XCircle,
+  Trash2,
   RefreshCw,
   Clock,
 } from 'lucide-react';
@@ -131,6 +132,45 @@ export const RentalsPage: React.FC<RentalsPageProps> = ({
       setSelectedDetailRental(res.data);
     } catch (err: any) {
       toastError('Erro ao carregar detalhes', err.message);
+    }
+  };
+
+  const handleDeleteRental = async (rental: Rental) => {
+    const rentalNumber =
+      rental.rentalNumber ||
+      rental.codigoContrato ||
+      rental.id;
+
+    const confirmed = window.confirm(
+      `EXCLUIR LOCAÇÃO?\n\n` +
+      `Contrato: ${rentalNumber}\n` +
+      `Cliente: ${rental.client?.name || 'NÃO INFORMADO'}\n\n` +
+      `Esta ação removerá a locação e seus registros vinculados.\n` +
+      `Ela não poderá ser desfeita.\n\n` +
+      `Deseja realmente excluir?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await api.rentals.delete(rental.id);
+
+      toastSuccess(
+        'Locação excluída',
+        `A locação ${rentalNumber} foi removida com sucesso.`
+      );
+
+      setSelectedDetailRental(null);
+      setSelectedReturnRental(null);
+      setSelectedCancelRental(null);
+
+      await fetchRentals();
+      await loadAuxiliaryData();
+    } catch (err: any) {
+      toastError(
+        'Não foi possível excluir a locação',
+        err?.message || 'Não foi possível excluir a locação.'
+      );
     }
   };
 
@@ -474,6 +514,17 @@ export const RentalsPage: React.FC<RentalsPageProps> = ({
                             <Eye className="w-3.5 h-3.5 text-slate-600" />
                             Detalhes
                           </Button>
+
+                          <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-[11px] py-1 px-2 h-auto font-bold text-rose-600 hover:bg-rose-50 hover:border-rose-300 border-rose-200 gap-1"
+                              onClick={() => handleDeleteRental(r)}
+                              title="Excluir locação criada por engano"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Excluir
+                            </Button>
 
                           {isRentalActive && (
                             <Button

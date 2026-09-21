@@ -215,6 +215,33 @@ enum Permission {
   SETTINGS_MANAGE
 }
 
+enum InterestType {
+  DAILY
+  MONTHLY
+}
+
+model BillingSettings {
+  id                    String       @id @default(uuid())
+  companyId             String       @unique
+
+  gracePeriodDays       Int          @default(5)
+
+  interestEnabled       Boolean      @default(true)
+  interestType          InterestType @default(MONTHLY)
+  interestRate          Decimal      @default(0) @db.Decimal(10, 4)
+
+  fineEnabled           Boolean      @default(true)
+  fineRate              Decimal      @default(0) @db.Decimal(10, 4)
+  fineOnce              Boolean      @default(true)
+
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("billing_settings")
+}
+
 model Company {
   id String @id @default(uuid())
 
@@ -262,6 +289,8 @@ model Company {
   workshops             Workshop[]
   suppliers             Supplier[]
   maintenancePlans      MaintenancePlan[]
+
+  billingSettings BillingSettings?
 
   @@map("companies")
 }

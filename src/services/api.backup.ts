@@ -226,16 +226,11 @@ export const api = {
         dataPagamento?: string;
         observacoes?: string;
         valorPago?: number;
-        kmAtual?: number;
       }
     ) =>
       request<{ message: string; data: any }>(`/rentals/${rentalId}/payments/${paymentId}/pay`, {
         method: 'POST',
         body: JSON.stringify(data),
-      }),
-    delete: (id: string) =>
-      request<{ message: string; data: any }>(`/rentals/${id}`, {
-        method: 'DELETE',
       }),
     updateCaucao: (
       rentalId: string,

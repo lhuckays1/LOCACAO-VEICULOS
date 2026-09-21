@@ -31,6 +31,40 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+// Datas vindas de <input type="date"> são DATE-ONLY.
+// Não usamos new Date("YYYY-MM-DD") + toISOString(), pois isso pode
+// deslocar a data para o dia anterior em fusos como America/Sao_Paulo.
+const parseDateOnly = (value: string): Date => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return new Date(NaN);
+  }
+
+  const [, year, month, day] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    12,
+    0,
+    0,
+    0
+  );
+};
+
+const dateOnlyToIso = (value: string): string => {
+  const date = parseDateOnly(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Data inválida: ${value || 'não informada'}`);
+  }
+
+  // Meio-dia UTC evita que a serialização atravesse o dia anterior
+  // quando o sistema estiver em um fuso negativo em relação ao UTC.
+  return `${value}T12:00:00.000Z`;
+};
+
 interface RentalWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -206,7 +240,7 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
 
   // Generated preview installments
   const previewInstallments = Array.from({ length: quantityPeriods }).map((_, i) => {
-    const dueDateObj = new Date(startDate);
+    const dueDateObj = parseDateOnly(startDate);
     if (billingFrequency === 'DIARIA') {
       dueDateObj.setDate(dueDateObj.getDate() + i);
     } else if (billingFrequency === 'SEMANAL') {
@@ -220,7 +254,9 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
 
     return {
       numero: i + 1,
-      vencimento: dueDateObj.toISOString().split('T')[0],
+      vencimento: Number.isNaN(dueDateObj.getTime())
+        ? ''
+        : `${dueDateObj.getFullYear()}-${String(dueDateObj.getMonth() + 1).padStart(2, '0')}-${String(dueDateObj.getDate()).padStart(2, '0')}`,
       valor: amount,
       descricao: `Parcela ${i + 1}/${quantityPeriods} - Locação (${billingFrequency})`,
     };
@@ -240,7 +276,15 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
   };
 
   const goToStep3 = () => {
-    if (new Date(startDate) > new Date(endDate)) {
+    const start = parseDateOnly(startDate);
+    const end = parseDateOnly(endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      toastError('Datas inválidas', 'Informe uma data de início e uma data de devolução válidas.');
+      return;
+    }
+
+    if (start.getTime() > end.getTime()) {
       toastError('Datas inválidas', 'A data de devolução não pode ser anterior à data de início.');
       return;
     }
@@ -260,6 +304,18 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
   };
 
   const handleSubmitRental = async () => {
+    const start = parseDateOnly(startDate);
+    const end = parseDateOnly(endDate);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime()) ||
+      start.getTime() > end.getTime()
+    ) {
+      toastError('Datas inválidas', 'Confira as datas de início e devolução antes de emitir o contrato.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const damagesArray = preExistingDamages
@@ -272,8 +328,8 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
       const res = await api.rentals.create({
         clientId: selectedClientId,
         vehicleId: selectedVehicleId,
-        startDate: new Date(startDate).toISOString(),
-        endDate: new Date(endDate).toISOString(),
+        startDate: dateOnlyToIso(startDate),
+        endDate: dateOnlyToIso(endDate),
         billingFrequency,
         amount,
         quantidadePeriodos: quantityPeriods,

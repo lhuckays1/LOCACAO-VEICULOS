@@ -229,11 +229,9 @@ export const SuperAdminCompaniesPage: React.FC = () => {
           state: form.state || null,
           zipCode: form.zipCode || null,
 
-          admin: {
-            name: form.adminName,
-            email: form.adminEmail,
-            password: form.adminPassword,
-          },
+          adminName: form.adminName,
+          adminEmail: form.adminEmail,
+          adminPassword: form.adminPassword,
         };
 
         console.log('[EMPRESAS] Criando empresa:', payload);

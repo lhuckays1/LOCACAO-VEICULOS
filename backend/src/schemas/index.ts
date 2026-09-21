@@ -143,9 +143,21 @@ export const rentalSchema = z.object({
 });
 
 export const payInstallmentSchema = z.object({
-  formaPagamento: z.string().min(1, 'Forma de pagamento é obrigatória'),
+  valorPago: z.coerce
+    .number()
+    .positive('O valor pago deve ser maior que zero')
+    .optional(),
+
+  formaPagamento: z
+    .string()
+    .min(1, 'Forma de pagamento é obrigatória'),
+
   dataPagamento: z.string().optional(),
-  observacoes: z.string().optional().nullable(),
+
+  observacoes: z
+    .string()
+    .optional()
+    .nullable(),
 });
 
 export const updateCaucaoSchema = z.object({

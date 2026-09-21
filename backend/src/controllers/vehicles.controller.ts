@@ -578,48 +578,148 @@ export class VehiclesController {
         return;
       }
 
-      if (vehicle.status === 'RENTED') {
-        res.status(400).json({
-          error: 'VEHICLE_CURRENTLY_RENTED',
-          message: 'Não é possível excluir um veículo com locação ativa em andamento.',
+      await prisma.$transaction(async (tx) => {
+        // Exclusão DEFINITIVA: primeiro removemos os registros dependentes
+        // que possuem FK restritiva ou histórico financeiro vinculado.
+        //
+        // A operação é transacional: se qualquer etapa falhar, nada é
+        // removido do banco.
+
+        // 1) Auditoria da exclusão.
+        // EXCLUSÃO DEFINITIVA
+        // Remove primeiro todos os registros dependentes para que as FKs
+        // restritivas não impeçam a remoção do veículo.
+
+        // 1) Transações financeiras do veículo e das locações do veículo.
+        const vehicleFinancialTransactions =
+          await tx.financialTransaction.findMany({
+            where: {
+              OR: [
+                { vehicleId: vehicle.id },
+                { rental: { vehicleId: vehicle.id } },
+              ],
+            },
+            select: { id: true },
+          });
+
+        const financialTransactionIds = vehicleFinancialTransactions.map(
+          (item) => item.id,
+        );
+
+        if (financialTransactionIds.length > 0) {
+          await tx.financialSettlement.deleteMany({
+            where: {
+              transactionId: {
+                in: financialTransactionIds,
+              },
+            },
+          });
+
+          await tx.financialTransaction.deleteMany({
+            where: {
+              id: {
+                in: financialTransactionIds,
+              },
+            },
+          });
+        }
+
+        // 2) Locações do veículo e seus registros dependentes.
+        const vehicleRentals = await tx.rental.findMany({
+          where: {
+            vehicleId: vehicle.id,
+            companyId,
+          },
+          select: { id: true },
         });
-        return;
-      }
 
-      // A quilometragem inicial é um registro técnico criado automaticamente
-      // no cadastro e não deve impedir a exclusão de um veículo de teste/novo.
-      // Registros de negócio/histórico continuam protegendo a exclusão definitiva.
-      const relatedRecords =
-        vehicle._count.rentals +
-        vehicle._count.maintenances +
-        vehicle._count.fines +
-        vehicle._count.expenses +
-        vehicle._count.incidents +
-        vehicle._count.inspections +
-        vehicle._count.financialTransactions +
-        vehicle._count.maintenancePlans;
+        const rentalIds = vehicleRentals.map((item) => item.id);
 
-      if (relatedRecords > 0) {
-        res.status(409).json({
-          error: 'VEHICLE_HAS_HISTORY',
-          message:
-            'Este veículo possui registros operacionais vinculados e não pode ser excluído definitivamente. Para preservar o histórico, mantenha-o como vendido/inativo.',
-          details: {
-            rentals: vehicle._count.rentals,
-            maintenances: vehicle._count.maintenances,
-            mileageLogs: vehicle._count.mileageLogs,
-            fines: vehicle._count.fines,
-            expenses: vehicle._count.expenses,
-            incidents: vehicle._count.incidents,
-            inspections: vehicle._count.inspections,
-            financialTransactions: vehicle._count.financialTransactions,
-            maintenancePlans: vehicle._count.maintenancePlans,
+        if (rentalIds.length > 0) {
+          await tx.payment.deleteMany({
+            where: {
+              rentalId: {
+                in: rentalIds,
+              },
+            },
+          });
+
+          await tx.rentalPayment.deleteMany({
+            where: {
+              rentalId: {
+                in: rentalIds,
+              },
+            },
+          });
+
+          await tx.contract.deleteMany({
+            where: {
+              rentalId: {
+                in: rentalIds,
+              },
+            },
+          });
+
+          await tx.inspection.deleteMany({
+            where: {
+              rentalId: {
+                in: rentalIds,
+              },
+            },
+          });
+
+          await tx.rental.deleteMany({
+            where: {
+              id: {
+                in: rentalIds,
+              },
+            },
+          });
+        }
+
+        // 3) Registros diretamente vinculados ao veículo.
+        await tx.vehicleMileage.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
           },
         });
-        return;
-      }
 
-      await prisma.$transaction(async (tx) => {
+        await tx.maintenancePlan.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
+          },
+        });
+
+        await tx.fine.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
+          },
+        });
+
+        await tx.incident.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
+          },
+        });
+
+        await tx.inspection.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
+          },
+        });
+
+        await tx.maintenance.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
+          },
+        });
+
+        await tx.expense.deleteMany({
+          where: {
+            vehicleId: vehicle.id,
+          },
+        });
+
         await tx.auditLog.create({
           data: {
             companyId,
@@ -635,6 +735,8 @@ export class VehiclesController {
             }),
             newData: JSON.stringify({
               deleted: true,
+              definitive: true,
+              relatedRecordsDeleted: true,
             }),
           },
         });
@@ -647,7 +749,7 @@ export class VehiclesController {
       });
 
       res.json({
-        message: 'Veículo excluído definitivamente com sucesso.',
+        message: 'Veículo e todos os registros vinculados foram excluídos definitivamente com sucesso.',
         data: {
           id: vehicle.id,
           plate: vehicle.plate,
