@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { Rental, RentalPayment, DepositStatus } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -32,6 +33,7 @@ import {
   Clock,
   ArrowRight,
   Trash2,
+  ReceiptText,
 } from 'lucide-react';
 
 interface RentalDetailModalProps {
@@ -61,6 +63,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
   onOpenCancelModal,
 }) => {
   const { success: toastSuccess, error: toastError } = useToast();
+  const { company } = useAuth();
   const [activeTab, setActiveTab] = useState<'resumo' | 'cobrancas' | 'vistorias' | 'historico'>('resumo');
 
   // Pay Installment state
@@ -162,7 +165,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
     const contract = rental.codigoContrato || rental.rentalNumber;
     const confirmed = window.confirm(
       `ATENÇÃO\n\nDeseja realmente EXCLUIR a locação ${contract}?\n\n` +
-      'ATENÇÃO: a locação, parcelas, recebimentos, caução, vistorias, registros de KM e demais dados vinculados serão removidos definitivamente.\n\n' +
+      'Essa ação é indicada somente para locações criadas por engano. Os dados da locação, parcelas, vistorias e registros de KM vinculados serão removidos.\n\n' +
       'Esta ação não poderá ser desfeita.'
     );
 
@@ -180,12 +183,299 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
     } catch (err: any) {
       toastError(
         'Não foi possível excluir',
-        err.message || 'Não foi possível excluir a locação.'
+        err.message || 'A locação possui movimentações que impedem a exclusão.'
       );
     } finally {
       setIsDeletingRental(false);
     }
   };
+
+  const escapeHtml = (value: unknown) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+  const getPaymentMethodLabel = (value?: string | null) => {
+    const labels: Record<string, string> = {
+      PIX: 'PIX',
+      BOLETO: 'Boleto Bancário',
+      CARTAO_CREDITO: 'Cartão de Crédito',
+      CARTAO_DEBITO: 'Cartão de Débito',
+      DINHEIRO: 'Dinheiro',
+      TRANSFERENCIA: 'Transferência / TED',
+    };
+
+    return value ? labels[value] || value : 'Não informado';
+  };
+
+  const handleGenerateReceipt = (payment: RentalPayment) => {
+    if (payment.status !== 'PAGO') {
+      toastError('Recibo indisponível', 'O recibo só pode ser gerado para parcelas pagas.');
+      return;
+    }
+
+    const receiptWindow = window.open('', '_blank', 'width=800,height=900');
+
+    if (!receiptWindow) {
+      toastError(
+        'Não foi possível abrir o recibo',
+        'Permita pop-ups para o FROTA CRM e tente novamente.'
+      );
+      return;
+    }
+
+    const companyName = company?.name || company?.legalName || 'FROTA CRM';
+    const companyDocument = company?.document || '';
+    const companyAddress = [
+      company?.address,
+      company?.city,
+      company?.state,
+      company?.zipCode,
+    ]
+      .filter(Boolean)
+      .join(' - ');
+
+    const clientName = rental.client?.name || 'Cliente não informado';
+    const clientDocument = rental.client?.cpfCnpj || '';
+    const vehicleName = [rental.vehicle?.brand, rental.vehicle?.model]
+      .filter(Boolean)
+      .join(' ');
+    const vehiclePlate = rental.vehicle?.plate || '';
+    const generatedAt = new Date().toLocaleString('pt-BR');
+    const receiptNumber = `${contractCode}-${String(payment.numeroParcela).padStart(2, '0')}`;
+
+    receiptWindow.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Recibo ${escapeHtml(receiptNumber)}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 32px;
+              background: #f1f5f9;
+              color: #0f172a;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 13px;
+            }
+            .receipt {
+              width: 100%;
+              max-width: 720px;
+              margin: 0 auto;
+              background: #fff;
+              border: 1px solid #cbd5e1;
+              border-radius: 12px;
+              padding: 32px;
+            }
+            .top {
+              display: flex;
+              justify-content: space-between;
+              gap: 24px;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 18px;
+              margin-bottom: 24px;
+            }
+            .brand { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+            .muted { color: #64748b; }
+            .title { text-align: right; }
+            .title h1 { margin: 0; font-size: 18px; }
+            .title p { margin: 5px 0 0; color: #64748b; }
+            .paid {
+              margin: 0 0 24px;
+              padding: 16px;
+              border: 1px solid #a7f3d0;
+              background: #ecfdf5;
+              border-radius: 10px;
+              color: #065f46;
+              text-align: center;
+            }
+            .paid strong { display: block; font-size: 20px; margin-bottom: 4px; }
+            .section { margin-top: 20px; }
+            .section h2 {
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: .08em;
+              color: #475569;
+              margin: 0 0 10px;
+              padding-bottom: 6px;
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 10px 24px;
+            }
+            .field label {
+              display: block;
+              font-size: 10px;
+              color: #94a3b8;
+              text-transform: uppercase;
+              margin-bottom: 3px;
+            }
+            .field strong { font-size: 13px; }
+            .amount {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-top: 24px;
+              padding: 16px;
+              border-radius: 10px;
+              background: #0f172a;
+              color: #fff;
+            }
+            .amount span { color: #cbd5e1; }
+            .amount strong { font-size: 22px; color: #34d399; }
+            .notes {
+              margin-top: 18px;
+              padding: 12px;
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              color: #475569;
+            }
+            .footer {
+              margin-top: 28px;
+              padding-top: 14px;
+              border-top: 1px solid #e2e8f0;
+              text-align: center;
+              font-size: 10px;
+              color: #94a3b8;
+              line-height: 1.5;
+            }
+            .signature {
+              margin-top: 46px;
+              width: 280px;
+              margin-left: auto;
+              margin-right: auto;
+              text-align: center;
+              border-top: 1px solid #64748b;
+              padding-top: 8px;
+              color: #475569;
+            }
+            @media print {
+              @page { size: A4; margin: 12mm; }
+              body { background: #fff; padding: 0; }
+              .receipt { max-width: none; border: 0; border-radius: 0; padding: 10px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="top">
+              <div>
+                <div class="brand">${escapeHtml(companyName)}</div>
+                ${companyDocument ? `<div class="muted">CNPJ/CPF: ${escapeHtml(companyDocument)}</div>` : ''}
+                ${companyAddress ? `<div class="muted">${escapeHtml(companyAddress)}</div>` : ''}
+              </div>
+              <div class="title">
+                <h1>RECIBO DE PAGAMENTO</h1>
+                <p>Nº ${escapeHtml(receiptNumber)}</p>
+              </div>
+            </div>
+
+            <div class="paid">
+              <strong>PAGAMENTO RECEBIDO</strong>
+              Parcela #${escapeHtml(payment.numeroParcela)} do contrato ${escapeHtml(contractCode)}
+            </div>
+
+            <div class="section">
+              <h2>Cliente</h2>
+              <div class="grid">
+                <div class="field">
+                  <label>Nome</label>
+                  <strong>${escapeHtml(clientName)}</strong>
+                </div>
+                <div class="field">
+                  <label>CPF / CNPJ</label>
+                  <strong>${escapeHtml(clientDocument || 'Não informado')}</strong>
+                </div>
+                <div class="field">
+                  <label>Telefone</label>
+                  <strong>${escapeHtml(rental.client?.phone || 'Não informado')}</strong>
+                </div>
+                <div class="field">
+                  <label>E-mail</label>
+                  <strong>${escapeHtml(rental.client?.email || 'Não informado')}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <h2>Locação</h2>
+              <div class="grid">
+                <div class="field">
+                  <label>Contrato</label>
+                  <strong>${escapeHtml(contractCode)}</strong>
+                </div>
+                <div class="field">
+                  <label>Veículo</label>
+                  <strong>${escapeHtml(vehicleName || 'Não informado')}</strong>
+                </div>
+                <div class="field">
+                  <label>Placa</label>
+                  <strong>${escapeHtml(vehiclePlate || 'Não informada')}</strong>
+                </div>
+                <div class="field">
+                  <label>Período da locação</label>
+                  <strong>${escapeHtml(formatDate(rental.dataInicio || rental.startDate))} a ${escapeHtml(formatDate(rental.dataFimPrevista || rental.endDate))}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <h2>Pagamento</h2>
+              <div class="grid">
+                <div class="field">
+                  <label>Parcela</label>
+                  <strong>${escapeHtml(payment.numeroParcela)} de ${escapeHtml(rental.payments?.length || 1)}</strong>
+                </div>
+                <div class="field">
+                  <label>Vencimento</label>
+                  <strong>${escapeHtml(formatDate(payment.dataVencimento))}</strong>
+                </div>
+                <div class="field">
+                  <label>Data do pagamento</label>
+                  <strong>${escapeHtml(formatDate(payment.dataPagamento || ''))}</strong>
+                </div>
+                <div class="field">
+                  <label>Forma de pagamento</label>
+                  <strong>${escapeHtml(getPaymentMethodLabel(payment.formaPagamento))}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="amount">
+              <span>Valor recebido referente a esta parcela</span>
+              <strong>${escapeHtml(maskCurrency(payment.valor))}</strong>
+            </div>
+
+            ${payment.observacoes ? `<div class="notes"><strong>Observações:</strong> ${escapeHtml(payment.observacoes)}</div>` : ''}
+
+            <div class="signature">${escapeHtml(companyName)}<br />Responsável pelo recebimento</div>
+
+            <div class="footer">
+              Recibo emitido pelo FROTA CRM em ${escapeHtml(generatedAt)}.<br />
+              Este documento comprova o registro do pagamento da parcela acima.
+            </div>
+          </div>
+          <script>
+            window.addEventListener('load', function () {
+              setTimeout(function () {
+                window.print();
+              }, 250);
+            });
+          </script>
+        </body>
+      </html>
+    `);
+
+    receiptWindow.document.close();
+  };
+
 
   const handleOpenCaucaoModal = () => {
     setCaucaoStatus(rental.statusCaucao || (rental.caucaoRecebida >= rental.valorCaucao ? 'RECEBIDA' : 'PENDENTE'));
@@ -295,7 +585,8 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                   Cancelar Locação
                 </Button>
               )}
-              <Button
+              {rental.status !== 'FINALIZADA' && rental.status !== 'COMPLETED' && (
+                <Button
                   variant="danger"
                   size="sm"
                   onClick={handleDeleteRental}
@@ -306,6 +597,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                   Excluir Locação
                 </Button>
+              )}
             </div>
           </div>
 
@@ -647,7 +939,18 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                             )}
                           </td>
                           <td className="px-3.5 py-3 text-right">
-                            {payment.status !== 'PAGO' && payment.status !== 'CANCELADO' && (
+                            {payment.status === 'PAGO' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleGenerateReceipt(payment)}
+                                className="text-[11px] py-1 px-2.5 h-auto font-bold gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                title="Gerar recibo de pagamento"
+                              >
+                                <ReceiptText className="w-3 h-3" />
+                                Recibo
+                              </Button>
+                            ) : payment.status !== 'CANCELADO' ? (
                               <Button
                                 size="sm"
                                 variant="primary"
@@ -657,7 +960,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                                 <CheckCircle2 className="w-3 h-3" />
                                 Dar Baixa
                               </Button>
-                            )}
+                            ) : null}
                           </td>
                         </tr>
                       ))}

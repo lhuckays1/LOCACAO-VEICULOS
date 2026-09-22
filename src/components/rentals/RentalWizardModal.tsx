@@ -239,17 +239,27 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
   const totalPredictedValue = Math.max(0, totalPeriodsValue - discount + addition);
 
   // Generated preview installments
+  // A primeira parcela SEMPRE começa na data de início da locação.
+  // Ex.: início 28/08 + cobrança semanal => 28/08, 04/09, 11/09...
   const previewInstallments = Array.from({ length: quantityPeriods }).map((_, i) => {
     const dueDateObj = parseDateOnly(startDate);
-    if (billingFrequency === 'DIARIA') {
-      dueDateObj.setDate(dueDateObj.getDate() + i);
-    } else if (billingFrequency === 'SEMANAL') {
-      dueDateObj.setDate(dueDateObj.getDate() + i * 7);
-    } else if (billingFrequency === 'QUINZENAL') {
-      dueDateObj.setDate(dueDateObj.getDate() + i * 14);
-    } else {
-      dueDateObj.setMonth(dueDateObj.getMonth() + i);
-      dueDateObj.setDate(dueDay);
+
+    if (i > 0) {
+      if (billingFrequency === 'DIARIA') {
+        dueDateObj.setDate(dueDateObj.getDate() + i);
+      } else if (billingFrequency === 'SEMANAL') {
+        dueDateObj.setDate(dueDateObj.getDate() + i * 7);
+      } else if (billingFrequency === 'QUINZENAL') {
+        dueDateObj.setDate(dueDateObj.getDate() + i * 15);
+      } else {
+        dueDateObj.setMonth(dueDateObj.getMonth() + i);
+        dueDateObj.setDate(
+          Math.min(
+            dueDay || dueDateObj.getDate(),
+            new Date(dueDateObj.getFullYear(), dueDateObj.getMonth() + 1, 0).getDate()
+          )
+        );
+      }
     }
 
     return {

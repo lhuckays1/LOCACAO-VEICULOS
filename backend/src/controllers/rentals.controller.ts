@@ -404,27 +404,34 @@ export class RentalsController {
       return new Date().toISOString().split('T')[0];
     }
 
+    // A primeira parcela sempre nasce exatamente na data de início.
+    // Não usamos Date("YYYY-MM-DD") nem métodos locais para evitar
+    // deslocamento de um dia em fusos como America/Sao_Paulo.
+    if (periodIndex === 0) {
+      return date.toISOString().slice(0, 10);
+    }
+
     const frequency = String(tipoCobranca).toUpperCase();
 
     if (frequency === 'DIARIA') {
-      date.setDate(date.getDate() + periodIndex);
+      date.setUTCDate(date.getUTCDate() + periodIndex);
     } else if (frequency === 'SEMANAL') {
-      date.setDate(date.getDate() + periodIndex * 7);
+      date.setUTCDate(date.getUTCDate() + periodIndex * 7);
     } else if (frequency === 'QUINZENAL') {
-      date.setDate(date.getDate() + periodIndex * 15);
+      date.setUTCDate(date.getUTCDate() + periodIndex * 15);
     } else if (frequency === 'MENSAL') {
-      date.setMonth(date.getMonth() + periodIndex);
+      date.setUTCMonth(date.getUTCMonth() + periodIndex);
 
       const maxDaysInMonth = new Date(
-        date.getFullYear(),
-        date.getMonth() + 1,
-        0
-      ).getDate();
+        Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 12, 0, 0)
+      ).getUTCDate();
 
-      date.setDate(Math.min(diaVencimento || date.getDate(), maxDaysInMonth));
+      date.setUTCDate(
+        Math.min(diaVencimento || date.getUTCDate(), maxDaysInMonth)
+      );
     }
 
-    return date.toISOString().split('T')[0];
+    return date.toISOString().slice(0, 10);
   }
 
   private async updateOverduePayments(companyId: string): Promise<void> {
