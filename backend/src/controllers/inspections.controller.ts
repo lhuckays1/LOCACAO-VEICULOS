@@ -1,226 +1,1071 @@
-import { Response, NextFunction } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { InspectionType, Prisma } from '@prisma/client';
+
 import { prisma } from '../config/prisma.js';
-import { AuthenticatedRequest } from '../middlewares/auth.middleware.js';
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    userId: string;
+    companyId: string;
+    role?: string;
+  };
+};
+
+/**
+ * ============================================================
+ * HELPERS
+ * ============================================================
+ */
+
+function parseJsonField(value: unknown): unknown {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
 
 function serializeInspection(item: any) {
-  const parse = (value: string | null | undefined, fallback: any) => {
-    try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
-  };
-
   return {
-    id: item.id,
-    companyId: item.companyId,
-    rentalId: item.rentalId,
-    vehicleId: item.vehicleId,
-    clientId: item.clientId,
-    type: item.type,
-    mileage: item.mileage,
-    fuelLevel: item.fuelLevel,
-    notes: item.notes,
-    checklist: parse(item.itemsJson, []),
-    photos: parse(item.photosJson, []),
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    vehicle: item.vehicle ? {
-      id: item.vehicle.id,
-      plate: item.vehicle.plate,
-      brand: item.vehicle.brand,
-      model: item.vehicle.model,
-      version: item.vehicle.version,
-      currentMileage: item.vehicle.currentMileage,
-    } : null,
-    rental: item.rental ? {
-      id: item.rental.id,
-      rentalNumber: item.rental.rentalNumber,
-      startDate: item.rental.startDate,
-      endDate: item.rental.endDate,
-      status: item.rental.status,
-    } : null,
-    client: item.client ? {
-      id: item.client.id,
-      name: item.client.name,
-      cpfCnpj: item.client.cpfCnpj,
-      phone: item.client.phone,
-    } : null,
+    ...item,
+
+    mileage: Number(item.mileage ?? 0),
+
+    items: parseJsonField(item.itemsJson),
+    photos: parseJsonField(item.photosJson),
+
+    // Mantemos os campos originais para compatibilidade
+    itemsJson: item.itemsJson ?? null,
+    photosJson: item.photosJson ?? null,
+
+    vehicle: item.vehicle
+      ? {
+          id: item.vehicle.id,
+          plate: item.vehicle.plate,
+          brand: item.vehicle.brand,
+          model: item.vehicle.model,
+          color: item.vehicle.color,
+          currentMileage: item.vehicle.currentMileage,
+        }
+      : null,
+
+    client: item.client
+      ? {
+          id: item.client.id,
+          name: item.client.name,
+          cpfCnpj: item.client.cpfCnpj,
+          phone: item.client.phone,
+        }
+      : null,
+
+    rental: item.rental
+      ? {
+          id: item.rental.id,
+          rentalNumber: item.rental.rentalNumber,
+          codigoContrato: item.rental.codigoContrato,
+          startDate: item.rental.startDate,
+          endDate: item.rental.endDate,
+          status: item.rental.status,
+        }
+      : null,
   };
 }
 
-const includes = {
-  vehicle: true,
-  rental: true,
-  client: true,
-} as const;
+function normalizeJsonField(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return JSON.stringify(value);
+    }
+  }
+
+  return JSON.stringify(value);
+}
+
+function getCompanyId(req: AuthenticatedRequest): string | null {
+  return req.user?.companyId || null;
+}
+
+function normalizeType(value: unknown): InspectionType {
+  const type = String(value || 'CHECKOUT').toUpperCase();
+
+  if (type !== 'CHECKOUT' && type !== 'CHECKIN') {
+    throw new Error('Tipo de vistoria inválido. Utilize CHECKOUT ou CHECKIN.');
+  }
+
+  return type as InspectionType;
+}
+
+/**
+ * ============================================================
+ * CONTROLLER
+ * ============================================================
+ */
 
 export class InspectionsController {
-  async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  /**
+   * GET /api/inspections
+   *
+   * Lista as vistorias da empresa autenticada.
+   */
+  async list(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { vehicleId, rentalId, type, search } = req.query;
+      const companyId = getCompanyId(req);
 
-      const where: Prisma.InspectionWhereInput = { companyId };
+      if (!companyId) {
+        res.status(401).json({
+          error: 'COMPANY_NOT_FOUND',
+          message: 'Empresa do usuário não identificada.',
+        });
+        return;
+      }
 
-      if (vehicleId && vehicleId !== 'ALL') where.vehicleId = String(vehicleId);
-      if (rentalId && rentalId !== 'ALL') where.rentalId = String(rentalId);
-      if (type && type !== 'ALL') where.type = String(type).toUpperCase() as InspectionType;
+      const {
+        type,
+        vehicleId,
+        rentalId,
+        clientId,
+        search,
+        startDate,
+        endDate,
+      } = req.query;
+
+      const where: Prisma.InspectionWhereInput = {
+        companyId,
+      };
+
+      if (type && String(type).toUpperCase() !== 'ALL') {
+        where.type = normalizeType(type);
+      }
+
+      if (vehicleId) {
+        where.vehicleId = String(vehicleId);
+      }
+
+      if (rentalId) {
+        where.rentalId = String(rentalId);
+      }
+
+      if (clientId) {
+        where.clientId = String(clientId);
+      }
 
       if (search) {
-        const term = String(search).trim();
-        where.OR = [
-          { vehicle: { plate: { contains: term, mode: 'insensitive' } } },
-          { client: { name: { contains: term, mode: 'insensitive' } } },
-          { rental: { rentalNumber: { contains: term, mode: 'insensitive' } } },
-        ];
+        const searchText = String(search).trim();
+
+        if (searchText) {
+          where.OR = [
+            {
+              vehicle: {
+                plate: {
+                  contains: searchText,
+                  mode: 'insensitive',
+                },
+              },
+            },
+            {
+              client: {
+                name: {
+                  contains: searchText,
+                  mode: 'insensitive',
+                },
+              },
+            },
+            {
+              rental: {
+                rentalNumber: {
+                  contains: searchText,
+                  mode: 'insensitive',
+                },
+              },
+            },
+            {
+              notes: {
+                contains: searchText,
+                mode: 'insensitive',
+              },
+            },
+          ];
+        }
+      }
+
+      if (startDate || endDate) {
+        const createdAt: Prisma.DateTimeFilter = {};
+
+        if (startDate) {
+          const start = new Date(`${String(startDate)}T00:00:00`);
+
+          if (!Number.isNaN(start.getTime())) {
+            createdAt.gte = start;
+          }
+        }
+
+        if (endDate) {
+          const end = new Date(`${String(endDate)}T23:59:59.999`);
+
+          if (!Number.isNaN(end.getTime())) {
+            createdAt.lte = end;
+          }
+        }
+
+        where.createdAt = createdAt;
       }
 
       const data = await prisma.inspection.findMany({
         where,
-        include: includes,
-        orderBy: { createdAt: 'desc' },
+        include: {
+          vehicle: {
+            select: {
+              id: true,
+              plate: true,
+              brand: true,
+              model: true,
+              color: true,
+              currentMileage: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              cpfCnpj: true,
+              phone: true,
+            },
+          },
+          rental: {
+            select: {
+              id: true,
+              rentalNumber: true,
+              codigoContrato: true,
+              startDate: true,
+              endDate: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
       });
 
-      res.json({ total: data.length, data: data.map(serializeInspection) });
-    } catch (err) { next(err); }
+      res.json({
+        total: data.length,
+        data: data.map(serializeInspection),
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 
-  async getById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  /**
+   * GET /api/inspections/:id
+   */
+  async getById(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
+      const companyId = getCompanyId(req);
+      const { id } = req.params;
+
+      if (!companyId) {
+        res.status(401).json({
+          error: 'COMPANY_NOT_FOUND',
+          message: 'Empresa do usuário não identificada.',
+        });
+        return;
+      }
+
       const inspection = await prisma.inspection.findFirst({
-        where: { id: req.params.id, companyId: req.user!.companyId },
-        include: includes,
+        where: {
+          id,
+          companyId,
+        },
+        include: {
+          vehicle: {
+            select: {
+              id: true,
+              plate: true,
+              brand: true,
+              model: true,
+              version: true,
+              color: true,
+              currentMileage: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              cpfCnpj: true,
+              phone: true,
+              email: true,
+            },
+          },
+          rental: {
+            select: {
+              id: true,
+              rentalNumber: true,
+              codigoContrato: true,
+              startDate: true,
+              endDate: true,
+              actualEndDate: true,
+              status: true,
+              initialMileage: true,
+              finalMileage: true,
+              initialFuelLevel: true,
+              finalFuelLevel: true,
+            },
+          },
+        },
       });
 
       if (!inspection) {
-        res.status(404).json({ error: 'INSPECTION_NOT_FOUND', message: 'Vistoria não encontrada.' });
+        res.status(404).json({
+          error: 'INSPECTION_NOT_FOUND',
+          message: 'Vistoria não encontrada.',
+        });
         return;
       }
 
-      res.json({ data: serializeInspection(inspection) });
-    } catch (err) { next(err); }
+      res.json({
+        data: serializeInspection(inspection),
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 
-  async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  /**
+   * POST /api/inspections
+   *
+   * Cria uma nova vistoria.
+   */
+  async create(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { vehicleId, rentalId, clientId, type, mileage, fuelLevel, notes, checklist, photos } = req.body;
+      const companyId = getCompanyId(req);
+
+      if (!companyId) {
+        res.status(401).json({
+          error: 'COMPANY_NOT_FOUND',
+          message: 'Empresa do usuário não identificada.',
+        });
+        return;
+      }
+
+      const {
+        type,
+        vehicleId,
+        rentalId,
+        clientId,
+        mileage,
+        fuelLevel,
+        notes,
+        items,
+        itemsJson,
+        photos,
+        photosJson,
+      } = req.body;
 
       if (!vehicleId) {
-        res.status(400).json({ error: 'VEHICLE_REQUIRED', message: 'Selecione um veículo.' });
+        res.status(400).json({
+          error: 'VEHICLE_REQUIRED',
+          message: 'O veículo é obrigatório para registrar a vistoria.',
+        });
         return;
       }
 
-      const vehicle = await prisma.vehicle.findFirst({ where: { id: String(vehicleId), companyId } });
+      if (mileage === undefined || mileage === null || mileage === '') {
+        res.status(400).json({
+          error: 'MILEAGE_REQUIRED',
+          message: 'O KM da vistoria é obrigatório.',
+        });
+        return;
+      }
+
+      const mileageNumber = Number(mileage);
+
+      if (!Number.isInteger(mileageNumber) || mileageNumber < 0) {
+        res.status(400).json({
+          error: 'INVALID_MILEAGE',
+          message: 'Informe um KM válido.',
+        });
+        return;
+      }
+
+      const normalizedType = normalizeType(type);
+
+      /**
+       * Verifica se o veículo pertence à empresa.
+       */
+      const vehicle = await prisma.vehicle.findFirst({
+        where: {
+          id: String(vehicleId),
+          companyId,
+        },
+      });
+
       if (!vehicle) {
-        res.status(404).json({ error: 'VEHICLE_NOT_FOUND', message: 'Veículo não encontrado nesta empresa.' });
+        res.status(404).json({
+          error: 'VEHICLE_NOT_FOUND',
+          message: 'Veículo não encontrado para esta empresa.',
+        });
         return;
       }
 
-      const normalizedType = String(type || 'CHECKOUT').toUpperCase() as InspectionType;
-      if (!['CHECKOUT', 'CHECKIN'].includes(normalizedType)) {
-        res.status(400).json({ error: 'INVALID_TYPE', message: 'Tipo de vistoria inválido.' });
+      /**
+       * Validação da locação, quando informada.
+       */
+      let rental: any = null;
+
+      if (rentalId) {
+        rental = await prisma.rental.findFirst({
+          where: {
+            id: String(rentalId),
+            companyId,
+          },
+          include: {
+            client: true,
+          },
+        });
+
+        if (!rental) {
+          res.status(404).json({
+            error: 'RENTAL_NOT_FOUND',
+            message: 'Locação não encontrada para esta empresa.',
+          });
+          return;
+        }
+
+        if (rental.vehicleId !== vehicle.id) {
+          res.status(400).json({
+            error: 'RENTAL_VEHICLE_MISMATCH',
+            message: 'O veículo informado não pertence à locação selecionada.',
+          });
+          return;
+        }
+
+        /**
+         * Se não foi informado cliente, usamos o cliente da locação.
+         */
+        if (!clientId && rental.clientId) {
+          req.body.clientId = rental.clientId;
+        }
+      }
+
+      /**
+       * Validação do cliente, quando informado.
+       */
+      let normalizedClientId: string | null =
+        clientId ? String(clientId) : null;
+
+      if (!normalizedClientId && rental?.clientId) {
+        normalizedClientId = rental.clientId;
+      }
+
+      if (normalizedClientId) {
+        const client = await prisma.client.findFirst({
+          where: {
+            id: normalizedClientId,
+            companyId,
+          },
+        });
+
+        if (!client) {
+          res.status(404).json({
+            error: 'CLIENT_NOT_FOUND',
+            message: 'Cliente não encontrado para esta empresa.',
+          });
+          return;
+        }
+      }
+
+      /**
+       * Não permitimos registrar KM inferior ao KM atual
+       * do veículo.
+       */
+      if (mileageNumber < vehicle.currentMileage) {
+        res.status(400).json({
+          error: 'INVALID_MILEAGE',
+          message: `O KM informado (${mileageNumber}) não pode ser inferior ao KM atual do veículo (${vehicle.currentMileage}).`,
+        });
         return;
       }
 
-      const km = Number(mileage);
-      if (!Number.isInteger(km) || km < 0) {
-        res.status(400).json({ error: 'INVALID_MILEAGE', message: 'Informe um KM válido.' });
-        return;
-      }
+      const normalizedItems = normalizeJsonField(
+        items !== undefined ? items : itemsJson
+      );
 
-      const rental = rentalId ? await prisma.rental.findFirst({
-        where: { id: String(rentalId), companyId, vehicleId: vehicle.id },
-      }) : null;
+      const normalizedPhotos = normalizeJsonField(
+        photos !== undefined ? photos : photosJson
+      );
 
-      if (rentalId && !rental) {
-        res.status(404).json({ error: 'RENTAL_NOT_FOUND', message: 'Locação não encontrada para este veículo.' });
-        return;
-      }
-
-      const client = clientId ? await prisma.client.findFirst({
-        where: { id: String(clientId), companyId },
-      }) : null;
-
-      if (clientId && !client) {
-        res.status(404).json({ error: 'CLIENT_NOT_FOUND', message: 'Cliente não encontrado nesta empresa.' });
-        return;
-      }
-
-      const created = await prisma.$transaction(async (tx) => {
-        const inspection = await tx.inspection.create({
+      const inspection = await prisma.$transaction(async (tx) => {
+        const created = await tx.inspection.create({
           data: {
             companyId,
             vehicleId: vehicle.id,
-            rentalId: rental?.id || null,
-            clientId: client?.id || null,
+            rentalId: rentalId ? String(rentalId) : null,
+            clientId: normalizedClientId,
             type: normalizedType,
-            mileage: km,
-            fuelLevel: String(fuelLevel || 'FULL'),
-            notes: notes ? String(notes).trim() : null,
-            itemsJson: JSON.stringify(Array.isArray(checklist) ? checklist : []),
-            photosJson: JSON.stringify(Array.isArray(photos) ? photos : []),
+            mileage: mileageNumber,
+            fuelLevel: fuelLevel
+              ? String(fuelLevel).toUpperCase()
+              : 'FULL',
+            notes: notes
+              ? String(notes).trim()
+              : null,
+            itemsJson: normalizedItems,
+            photosJson: normalizedPhotos,
           },
-          include: includes,
+          include: {
+            vehicle: {
+              select: {
+                id: true,
+                plate: true,
+                brand: true,
+                model: true,
+                color: true,
+                currentMileage: true,
+              },
+            },
+            client: {
+              select: {
+                id: true,
+                name: true,
+                cpfCnpj: true,
+                phone: true,
+              },
+            },
+            rental: {
+              select: {
+                id: true,
+                rentalNumber: true,
+                codigoContrato: true,
+                startDate: true,
+                endDate: true,
+                status: true,
+              },
+            },
+          },
         });
 
-        if (km > vehicle.currentMileage) {
-          await tx.vehicle.update({ where: { id: vehicle.id }, data: { currentMileage: km } });
+        /**
+         * Atualiza o KM atual do veículo quando a vistoria
+         * tiver KM superior ao registrado.
+         */
+        if (mileageNumber > vehicle.currentMileage) {
+          await tx.vehicle.update({
+            where: {
+              id: vehicle.id,
+            },
+            data: {
+              currentMileage: mileageNumber,
+            },
+          });
+
           await tx.vehicleMileage.create({
             data: {
               vehicleId: vehicle.id,
-              mileage: km,
-              type: normalizedType === 'CHECKOUT' ? 'RENTAL_START' : 'RENTAL_END',
-              notes: `VISTORIA ${normalizedType === 'CHECKOUT' ? 'DE SAÍDA' : 'DE ENTREGA'} - ${inspection.id}`,
-              createdBy: req.user!.userId,
+              mileage: mileageNumber,
+              type:
+                normalizedType === 'CHECKOUT'
+                  ? 'RENTAL_START'
+                  : 'RENTAL_END',
+              notes: `VISTORIA ${
+                normalizedType === 'CHECKOUT'
+                  ? 'DE SAÍDA'
+                  : 'DE DEVOLUÇÃO'
+              }`,
+              createdBy: req.user?.userId || null,
             },
           });
         }
 
-        await tx.auditLog.create({
-          data: {
+        /**
+         * Atualiza informações da locação quando houver
+         * uma vistoria vinculada.
+         */
+        if (rentalId) {
+          if (normalizedType === 'CHECKOUT') {
+            await tx.rental.update({
+              where: {
+                id: String(rentalId),
+              },
+              data: {
+                initialMileage: mileageNumber,
+                initialFuelLevel: fuelLevel
+                  ? String(fuelLevel).toUpperCase()
+                  : 'FULL',
+              },
+            });
+          }
+
+          if (normalizedType === 'CHECKIN') {
+            await tx.rental.update({
+              where: {
+                id: String(rentalId),
+              },
+              data: {
+                finalMileage: mileageNumber,
+                finalFuelLevel: fuelLevel
+                  ? String(fuelLevel).toUpperCase()
+                  : null,
+              },
+            });
+          }
+        }
+
+        /**
+         * Auditoria.
+         *
+         * Alguns projetos possuem AuditLog com estrutura
+         * diferente. Para não impedir a criação da vistoria
+         * caso o modelo de auditoria tenha sido alterado,
+         * fazemos a tentativa de forma isolada.
+         */
+        try {
+          await tx.auditLog.create({
+            data: {
+              companyId,
+              userId: req.user?.userId || null,
+              action: 'CREATE',
+              entity: 'INSPECTION',
+              entityId: created.id,
+              oldData: null,
+              newData: JSON.stringify({
+                type: normalizedType,
+                vehicleId: vehicle.id,
+                rentalId: rentalId ? String(rentalId) : null,
+                clientId: normalizedClientId,
+                mileage: mileageNumber,
+              }),
+            } as any,
+          });
+        } catch {
+          // A vistoria já foi criada; auditoria não deve bloquear
+          // a operação caso o schema de AuditLog seja diferente.
+        }
+
+        return created;
+      });
+
+      res.status(201).json({
+        message: 'Vistoria registrada com sucesso!',
+        data: serializeInspection(inspection),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * PUT /api/inspections/:id
+   */
+  async update(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const companyId = getCompanyId(req);
+      const { id } = req.params;
+
+      if (!companyId) {
+        res.status(401).json({
+          error: 'COMPANY_NOT_FOUND',
+          message: 'Empresa do usuário não identificada.',
+        });
+        return;
+      }
+
+      const existing = await prisma.inspection.findFirst({
+        where: {
+          id,
+          companyId,
+        },
+      });
+
+      if (!existing) {
+        res.status(404).json({
+          error: 'INSPECTION_NOT_FOUND',
+          message: 'Vistoria não encontrada.',
+        });
+        return;
+      }
+
+      const {
+        type,
+        vehicleId,
+        rentalId,
+        clientId,
+        mileage,
+        fuelLevel,
+        notes,
+        items,
+        itemsJson,
+        photos,
+        photosJson,
+      } = req.body;
+
+      let normalizedType = existing.type;
+
+      if (type !== undefined) {
+        normalizedType = normalizeType(type);
+      }
+
+      let normalizedVehicleId = existing.vehicleId;
+
+      if (vehicleId !== undefined && vehicleId !== '') {
+        normalizedVehicleId = String(vehicleId);
+      }
+
+      const vehicle = await prisma.vehicle.findFirst({
+        where: {
+          id: normalizedVehicleId,
+          companyId,
+        },
+      });
+
+      if (!vehicle) {
+        res.status(404).json({
+          error: 'VEHICLE_NOT_FOUND',
+          message: 'Veículo não encontrado para esta empresa.',
+        });
+        return;
+      }
+
+      let normalizedRentalId =
+        rentalId !== undefined
+          ? rentalId
+            ? String(rentalId)
+            : null
+          : existing.rentalId;
+
+      let normalizedClientId =
+        clientId !== undefined
+          ? clientId
+            ? String(clientId)
+            : null
+          : existing.clientId;
+
+      if (normalizedRentalId) {
+        const rental = await prisma.rental.findFirst({
+          where: {
+            id: normalizedRentalId,
             companyId,
-            userId: req.user!.userId,
-            action: 'CREATE',
-            entity: 'INSPECTION',
-            entityId: inspection.id,
-            oldData: null,
-            newData: JSON.stringify({ vehicleId: vehicle.id, type: normalizedType, mileage: km }),
           },
         });
 
-        return inspection;
-      }, { maxWait: 10000, timeout: 30000 });
+        if (!rental) {
+          res.status(404).json({
+            error: 'RENTAL_NOT_FOUND',
+            message: 'Locação não encontrada para esta empresa.',
+          });
+          return;
+        }
 
-      res.status(201).json({ message: 'Vistoria registrada com sucesso!', data: serializeInspection(created) });
-    } catch (err) { next(err); }
+        if (rental.vehicleId !== normalizedVehicleId) {
+          res.status(400).json({
+            error: 'RENTAL_VEHICLE_MISMATCH',
+            message: 'O veículo não pertence à locação selecionada.',
+          });
+          return;
+        }
+
+        if (!normalizedClientId) {
+          normalizedClientId = rental.clientId;
+        }
+      }
+
+      if (normalizedClientId) {
+        const client = await prisma.client.findFirst({
+          where: {
+            id: normalizedClientId,
+            companyId,
+          },
+        });
+
+        if (!client) {
+          res.status(404).json({
+            error: 'CLIENT_NOT_FOUND',
+            message: 'Cliente não encontrado para esta empresa.',
+          });
+          return;
+        }
+      }
+
+      let normalizedMileage = existing.mileage;
+
+      if (mileage !== undefined && mileage !== '') {
+        normalizedMileage = Number(mileage);
+
+        if (
+          !Number.isInteger(normalizedMileage) ||
+          normalizedMileage < 0
+        ) {
+          res.status(400).json({
+            error: 'INVALID_MILEAGE',
+            message: 'Informe um KM válido.',
+          });
+          return;
+        }
+      }
+
+      const normalizedItems =
+        items !== undefined || itemsJson !== undefined
+          ? normalizeJsonField(
+              items !== undefined ? items : itemsJson
+            )
+          : existing.itemsJson;
+
+      const normalizedPhotos =
+        photos !== undefined || photosJson !== undefined
+          ? normalizeJsonField(
+              photos !== undefined ? photos : photosJson
+            )
+          : existing.photosJson;
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const inspection = await tx.inspection.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            type: normalizedType,
+            vehicleId: normalizedVehicleId,
+            rentalId: normalizedRentalId,
+            clientId: normalizedClientId,
+            mileage: normalizedMileage,
+            fuelLevel:
+              fuelLevel !== undefined
+                ? String(fuelLevel).toUpperCase()
+                : existing.fuelLevel,
+            notes:
+              notes !== undefined
+                ? notes
+                  ? String(notes).trim()
+                  : null
+                : existing.notes,
+            itemsJson: normalizedItems,
+            photosJson: normalizedPhotos,
+          },
+          include: {
+            vehicle: {
+              select: {
+                id: true,
+                plate: true,
+                brand: true,
+                model: true,
+                color: true,
+                currentMileage: true,
+              },
+            },
+            client: {
+              select: {
+                id: true,
+                name: true,
+                cpfCnpj: true,
+                phone: true,
+              },
+            },
+            rental: {
+              select: {
+                id: true,
+                rentalNumber: true,
+                codigoContrato: true,
+                startDate: true,
+                endDate: true,
+                status: true,
+              },
+            },
+          },
+        });
+
+        /**
+         * Sincroniza KM somente quando for superior ao atual.
+         */
+        if (normalizedMileage > vehicle.currentMileage) {
+          await tx.vehicle.update({
+            where: {
+              id: vehicle.id,
+            },
+            data: {
+              currentMileage: normalizedMileage,
+            },
+          });
+        }
+
+        /**
+         * Sincroniza dados da locação.
+         */
+        if (normalizedRentalId) {
+          if (normalizedType === 'CHECKOUT') {
+            await tx.rental.update({
+              where: {
+                id: normalizedRentalId,
+              },
+              data: {
+                initialMileage: normalizedMileage,
+                initialFuelLevel:
+                  fuelLevel !== undefined
+                    ? String(fuelLevel).toUpperCase()
+                    : existing.fuelLevel,
+              },
+            });
+          }
+
+          if (normalizedType === 'CHECKIN') {
+            await tx.rental.update({
+              where: {
+                id: normalizedRentalId,
+              },
+              data: {
+                finalMileage: normalizedMileage,
+                finalFuelLevel:
+                  fuelLevel !== undefined
+                    ? String(fuelLevel).toUpperCase()
+                    : existing.fuelLevel,
+              },
+            });
+          }
+        }
+
+        try {
+          await tx.auditLog.create({
+            data: {
+              companyId,
+              userId: req.user?.userId || null,
+              action: 'UPDATE',
+              entity: 'INSPECTION',
+              entityId: existing.id,
+              oldData: JSON.stringify({
+                type: existing.type,
+                vehicleId: existing.vehicleId,
+                rentalId: existing.rentalId,
+                mileage: existing.mileage,
+              }),
+              newData: JSON.stringify({
+                type: normalizedType,
+                vehicleId: normalizedVehicleId,
+                rentalId: normalizedRentalId,
+                mileage: normalizedMileage,
+              }),
+            } as any,
+          });
+        } catch {
+          // Não bloquear atualização por falha de auditoria.
+        }
+
+        return inspection;
+      });
+
+      res.json({
+        message: 'Vistoria atualizada com sucesso!',
+        data: serializeInspection(updated),
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 
-  async delete(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  /**
+   * DELETE /api/inspections/:id
+   */
+  async delete(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const inspection = await prisma.inspection.findFirst({ where: { id: req.params.id, companyId } });
+      const companyId = getCompanyId(req);
+      const { id } = req.params;
+
+      if (!companyId) {
+        res.status(401).json({
+          error: 'COMPANY_NOT_FOUND',
+          message: 'Empresa do usuário não identificada.',
+        });
+        return;
+      }
+
+      const inspection = await prisma.inspection.findFirst({
+        where: {
+          id,
+          companyId,
+        },
+      });
 
       if (!inspection) {
-        res.status(404).json({ error: 'INSPECTION_NOT_FOUND', message: 'Vistoria não encontrada.' });
+        res.status(404).json({
+          error: 'INSPECTION_NOT_FOUND',
+          message: 'Vistoria não encontrada.',
+        });
         return;
       }
 
       await prisma.$transaction(async (tx) => {
-        await tx.inspection.delete({ where: { id: inspection.id } });
-        await tx.auditLog.create({
-          data: {
-            companyId,
-            userId: req.user!.userId,
-            action: 'DELETE',
-            entity: 'INSPECTION',
-            entityId: inspection.id,
-            oldData: JSON.stringify({ vehicleId: inspection.vehicleId, rentalId: inspection.rentalId, type: inspection.type, mileage: inspection.mileage }),
-            newData: null,
+        await tx.inspection.delete({
+          where: {
+            id: inspection.id,
           },
         });
-      }, { maxWait: 10000, timeout: 30000 });
 
-      res.json({ message: 'Vistoria excluída com sucesso!', data: { id: inspection.id } });
-    } catch (err) { next(err); }
+        try {
+          await tx.auditLog.create({
+            data: {
+              companyId,
+              userId: req.user?.userId || null,
+              action: 'DELETE',
+              entity: 'INSPECTION',
+              entityId: inspection.id,
+              oldData: JSON.stringify({
+                type: inspection.type,
+                vehicleId: inspection.vehicleId,
+                rentalId: inspection.rentalId,
+                clientId: inspection.clientId,
+                mileage: inspection.mileage,
+              }),
+              newData: null,
+            } as any,
+          });
+        } catch {
+          // Não bloquear exclusão por falha de auditoria.
+        }
+      });
+
+      res.json({
+        message: 'Vistoria excluída com sucesso!',
+        data: {
+          id: inspection.id,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 }
 

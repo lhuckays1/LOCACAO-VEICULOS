@@ -486,13 +486,12 @@ export class RentalsController {
     year: number
   ): Promise<string> {
     /*
-     * Bloqueia a geração do número para esta empresa/ano
-     * durante toda a transação atual.
+     * Garante que duas locações da mesma empresa/ano não
+     * recebam o mesmo número quando criadas simultaneamente.
      *
-     * Isso evita que duas locações criadas simultaneamente
-     * recebam o mesmo número.
+     * O lock é válido somente durante esta transação.
      */
-    await tx.$executeRaw`
+    await tx.$queryRaw`
       SELECT pg_advisory_xact_lock(
         hashtextextended(
           ${`RENTAL_NUMBER:${companyId}:${year}`},
@@ -501,92 +500,33 @@ export class RentalsController {
       )
     `;
 
-    const legacyPrefix = `LOC-${year}-`;
-    const newPrefix = `LOC-${year}`;
-
     const rentals = await tx.rental.findMany({
       where: {
         companyId,
-        OR: [
-          {
-            rentalNumber: {
-              startsWith: legacyPrefix,
-            },
-          },
-          {
-            rentalNumber: {
-              startsWith: newPrefix,
-            },
-          },
-        ],
+        rentalNumber: {
+          startsWith: `LOC-${year}-`,
+        },
       },
       select: {
         rentalNumber: true,
       },
+      orderBy: {
+        rentalNumber: 'desc',
+      },
+      take: 1,
     });
 
-    let sequence = 0;
+    let sequence = 1;
 
-    for (const rental of rentals) {
-      const number = String(rental.rentalNumber || '').trim();
+    if (rentals[0]?.rentalNumber) {
+      const match = rentals[0].rentalNumber.match(/-(\d+)$/);
 
-      let currentSequence: number | null = null;
-
-      /*
-       * Formato antigo:
-       * LOC-2026-000001
-       */
-      if (number.startsWith(legacyPrefix)) {
-        const sequencePart = number.slice(legacyPrefix.length);
-
-        if (/^\d+$/.test(sequencePart)) {
-          const parsed = Number(sequencePart);
-
-          if (Number.isSafeInteger(parsed) && parsed > 0) {
-            currentSequence = parsed;
-          }
-        }
-      }
-
-      /*
-       * Formato novo:
-       * LOC-20261
-       * LOC-20262
-       * LOC-202610
-       *
-       * IMPORTANTE:
-       * Só consideramos como formato novo se o restante
-       * depois do ano for exclusivamente numérico.
-       */
-      if (currentSequence === null && number.startsWith(newPrefix)) {
-        const sequencePart = number.slice(newPrefix.length);
-
-        if (/^\d+$/.test(sequencePart)) {
-          const parsed = Number(sequencePart);
-
-          if (Number.isSafeInteger(parsed) && parsed > 0) {
-            currentSequence = parsed;
-          }
-        }
-      }
-
-      if (
-        currentSequence !== null &&
-        currentSequence > sequence
-      ) {
-        sequence = currentSequence;
+      if (match) {
+        sequence = Number(match[1]) + 1;
       }
     }
 
-    const nextSequence = sequence + 1;
-
-    /*
-     * Novo padrão:
-     * LOC-20261
-     * LOC-20262
-     * LOC-20263
-     */
-    return `${newPrefix}${nextSequence}`;
+    return `LOC-${year}-${String(sequence).padStart(6, '0')}`;
   }
 
   /**
@@ -2521,6 +2461,4 @@ export class RentalsController {
 }
 
 export const rentalsController = new RentalsController();
-
-
 

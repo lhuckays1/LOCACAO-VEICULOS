@@ -1,105 +1,47 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { AlertTriangle, Camera, CheckCircle2, ClipboardCheck, Eye, Fuel, Gauge, Plus, Search, ShieldCheck, Trash2, X } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
-import { formatDate } from '../utils/formatters';
-import { ClipboardCheck, Plus, CheckCircle2, Camera, ShieldCheck } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 
-export const InspectionsPage: React.FC = () => {
-  const dummyInspections = [
-    {
-      id: '1',
-      rentalNumber: 'LOC-2024-0001',
-      vehiclePlate: 'BRA2E19',
-      clientName: 'CARLOS SILVA DE SOUZA',
-      type: 'SAÍDA (CHECK-OUT)',
-      date: '2024-03-01',
-      mileage: 18450,
-      fuel: 'CHEIO (1/1)',
-      cleanliness: 'IMPECÁVEL',
-      tires: 'BOM ESTADO (80%)',
-      status: 'APROVADA',
-    },
-    {
-      id: '2',
-      rentalNumber: 'LOC-2024-0003',
-      vehiclePlate: 'MER2026',
-      clientName: 'JULIANA PEREIRA LIMA',
-      type: 'ENTREGA (CHECK-IN)',
-      date: '2024-02-28',
-      mileage: 24200,
-      fuel: '3/4',
-      cleanliness: 'REGULAR',
-      tires: 'BOM ESTADO',
-      status: 'APROVADA COM RESSALVA',
-    },
-  ];
-
-  return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
-            <ClipboardCheck className="w-6 h-6 text-emerald-600" />
-            Vistorias & Checklist Digital (Check-in / Check-out)
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Registro fotográfico de lataria, estepe, macaco, nível de combustível, pneus e avarias na retirada e entrega.
-          </p>
-        </div>
-
-        <Button variant="primary" size="md" className="gap-2 font-bold shadow-xs">
-          <Plus className="w-4 h-4" />
-          Nova Vistoria Digital
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Histórico de Vistorias Realizadas</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase font-bold tracking-wider">
-                <tr>
-                  <th className="px-5 py-3.5">Contrato / Cliente</th>
-                  <th className="px-4 py-3.5">Veículo</th>
-                  <th className="px-4 py-3.5">Tipo de Vistoria</th>
-                  <th className="px-4 py-3.5">Data / Hora</th>
-                  <th className="px-4 py-3.5">KM & Combustível</th>
-                  <th className="px-4 py-3.5">Condição Geral</th>
-                  <th className="px-4 py-3.5">Parecer</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {dummyInspections.map((i) => (
-                  <tr key={i.id} className="hover:bg-slate-50/70">
-                    <td className="px-5 py-3.5">
-                      <div className="font-bold text-slate-900">{i.rentalNumber}</div>
-                      <div className="text-slate-500 text-[11px]">{i.clientName}</div>
-                    </td>
-                    <td className="px-4 py-3.5 font-mono font-bold text-slate-700">
-                      {i.vehiclePlate}
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-emerald-800">{i.type}</td>
-                    <td className="px-4 py-3.5 text-slate-600">{formatDate(i.date)}</td>
-                    <td className="px-4 py-3.5 text-slate-700">
-                      {i.mileage} KM • {i.fuel}
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-600">
-                      Limpeza: {i.cleanliness} • Pneus: {i.tires}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge variant="success">{i.status}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+type InspectionType = 'CHECK_OUT' | 'CHECK_IN';
+type Inspection = {
+  id:string; rentalNumber:string; clientName:string; vehiclePlate:string; vehicleDescription:string;
+  type:InspectionType; date:string; mileage:number; fuel:string; cleanliness:string; tires:string;
+  bodywork:string; spareTire:boolean; jack:boolean; wheelWrench:boolean; triangle:boolean;
+  damages:string; notes:string; responsible:string; status:'APROVADA'|'APROVADA_COM_RESSALVA';
 };
+
+const demo:Inspection[]=[
+ {id:'demo-1',rentalNumber:'LOC-2026-0001',clientName:'CARLOS SILVA DE SOUZA',vehiclePlate:'BRA2E19',vehicleDescription:'Chevrolet Onix 1.0',type:'CHECK_OUT',date:'2026-09-20T08:30:00',mileage:18450,fuel:'CHEIO (1/1)',cleanliness:'IMPECÁVEL',tires:'BOM ESTADO',bodywork:'BOM ESTADO',spareTire:true,jack:true,wheelWrench:true,triangle:true,damages:'',notes:'Veículo entregue ao cliente em condições normais.',responsible:'Administrador',status:'APROVADA'},
+ {id:'demo-2',rentalNumber:'LOC-2026-0003',clientName:'JULIANA PEREIRA LIMA',vehiclePlate:'MER2026',vehicleDescription:'Mercedes-Benz',type:'CHECK_IN',date:'2026-09-21T17:10:00',mileage:24200,fuel:'3/4',cleanliness:'REGULAR',tires:'BOM ESTADO',bodywork:'AVARIA',spareTire:true,jack:true,wheelWrench:true,triangle:true,damages:'Risco na porta traseira direita.',notes:'Avaria registrada na devolução.',responsible:'Administrador',status:'APROVADA_COM_RESSALVA'}
+];
+
+const empty={rentalNumber:'',clientName:'',vehiclePlate:'',vehicleDescription:'',type:'CHECK_OUT' as InspectionType,mileage:0,fuel:'CHEIO (1/1)',cleanliness:'IMPECÁVEL',tires:'BOM ESTADO',bodywork:'BOM ESTADO',spareTire:true,jack:true,wheelWrench:true,triangle:true,damages:'',notes:'',responsible:'Administrador'};
+const input='w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100';
+const typeLabel=(t:InspectionType)=>t==='CHECK_OUT'?'SAÍDA (CHECK-OUT)':'ENTREGA (CHECK-IN)';
+const dateLabel=(d:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(d));
+
+export const InspectionsPage:React.FC=()=>{
+ const [items,setItems]=useState(demo),[search,setSearch]=useState(''),[filter,setFilter]=useState('ALL'),[open,setOpen]=useState(false),[view,setView]=useState<Inspection|null>(null),[form,setForm]=useState(empty);
+ const filtered=useMemo(()=>items.filter(i=>(filter==='ALL'||i.type===filter)&&(!search||`${i.rentalNumber} ${i.clientName} ${i.vehiclePlate}`.toLowerCase().includes(search.toLowerCase()))),[items,search,filter]);
+ const set=(k:string,v:any)=>setForm(f=>({...f,[k]:v}));
+ const save=(e:React.FormEvent)=>{e.preventDefault();if(!form.rentalNumber||!form.clientName||!form.vehiclePlate||form.mileage<0)return window.alert('Preencha contrato, cliente, placa e KM.');const x={...form,id:`local-${Date.now()}`,date:new Date().toISOString(),status:(form.damages||form.bodywork==='AVARIA'?'APROVADA_COM_RESSALVA':'APROVADA') as Inspection['status']};setItems(v=>[x,...v]);setOpen(false);setView(x);setForm(empty)};
+ const remove=(id:string)=>{if(window.confirm('Excluir esta vistoria da visualização de teste?'))setItems(v=>v.filter(x=>x.id!==id))};
+ return <div className="space-y-6 animate-in fade-in">
+  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="flex items-center gap-2 text-xl font-black text-slate-900"><ClipboardCheck className="h-6 w-6 text-emerald-600"/>Vistorias & Checklist Digital</h1><p className="mt-1 text-xs text-slate-500">Controle de check-in/check-out, condições, itens e avarias.</p></div><Button variant="primary" className="gap-2 font-bold" onClick={()=>{setForm(empty);setOpen(true)}}><Plus className="h-4 w-4"/>Nova Vistoria Digital</Button></div>
+  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Total',items.length,ClipboardCheck],['Aprovadas',items.filter(i=>i.status==='APROVADA').length,CheckCircle2],['Com ressalva',items.filter(i=>i.status!=='APROVADA').length,AlertTriangle],['Saída / Entrada',`${items.filter(i=>i.type==='CHECK_OUT').length}/${items.filter(i=>i.type==='CHECK_IN').length}`,ShieldCheck]].map(([l,n,I]:any)=><Card key={l}><CardContent className="p-4"><div className="flex justify-between"><I className="h-5 w-5 text-emerald-600"/><b className="text-2xl">{n}</b></div><p className="mt-2 text-[11px] font-bold uppercase text-slate-500">{l}</p></CardContent></Card>)}</div>
+  <Card><CardHeader><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><CardTitle>Histórico de Vistorias</CardTitle><div className="flex gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"/><input className={`${input} pl-9 sm:w-72`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Contrato, cliente ou placa..."/></div><select className={input} value={filter} onChange={e=>setFilter(e.target.value)}><option value="ALL">Todas</option><option value="CHECK_OUT">Check-out</option><option value="CHECK_IN">Check-in</option></select></div></div></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-left text-xs"><thead className="border-y bg-slate-50"><tr>{['Contrato / Cliente','Veículo','Tipo','Data / Hora','KM / Combustível','Condição','Ações'].map(h=><th key={h} className="px-4 py-3 font-bold text-slate-500">{h}</th>)}</tr></thead><tbody className="divide-y">{filtered.map(i=><tr key={i.id} className="hover:bg-slate-50"><td className="px-4 py-4"><b>{i.rentalNumber}</b><div className="text-[11px] text-slate-500">{i.clientName}</div></td><td className="px-4 py-4"><b>{i.vehiclePlate}</b><div className="text-[11px] text-slate-500">{i.vehicleDescription}</div></td><td className="px-4 py-4"><Badge variant={i.type==='CHECK_OUT'?'success':'info'}>{typeLabel(i.type)}</Badge></td><td className="px-4 py-4 whitespace-nowrap">{dateLabel(i.date)}</td><td className="px-4 py-4"><b>{i.mileage.toLocaleString('pt-BR')} KM</b><div className="text-[11px] text-slate-500"><Fuel className="mr-1 inline h-3 w-3"/>{i.fuel}</div></td><td className="px-4 py-4">Limpeza: <b>{i.cleanliness}</b><div>Pneus: <b>{i.tires}</b></div>{i.damages&&<span className="font-bold text-amber-700">⚠ Com avaria</span>}</td><td className="px-4 py-4 text-right"><Button variant="secondary" size="sm" className="mr-1 gap-1" onClick={()=>setView(i)}><Eye className="h-3.5 w-3.5"/>Ver</Button><button onClick={()=>remove(i.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4"/></button></td></tr>)}</tbody></table></div></CardContent></Card>
+
+  {open&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"><div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl"><div className="flex justify-between border-b p-5"><div><h2 className="text-lg font-black">Nova Vistoria Digital</h2><p className="text-xs text-slate-500">Checklist para retirada ou devolução.</p></div><button onClick={()=>setOpen(false)}><X/></button></div><form onSubmit={save} className="p-5">
+   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">{[['Tipo',<select className={input} value={form.type} onChange={e=>set('type',e.target.value)}><option value="CHECK_OUT">Saída (Check-out)</option><option value="CHECK_IN">Entrega (Check-in)</option></select>],['Contrato',<input className={input} value={form.rentalNumber} onChange={e=>set('rentalNumber',e.target.value)} placeholder="LOC-2026-0004"/>],['Cliente',<input className={input} value={form.clientName} onChange={e=>set('clientName',e.target.value)} placeholder="Nome do cliente"/>],['Placa',<input className={input} value={form.vehiclePlate} onChange={e=>set('vehiclePlate',e.target.value.toUpperCase())} placeholder="ABC1D23"/>],['Veículo',<input className={input} value={form.vehicleDescription} onChange={e=>set('vehicleDescription',e.target.value)} placeholder="Marca / modelo"/>],['KM',<div className="relative"><Gauge className="absolute left-3 top-3 h-4 w-4 text-slate-400"/><input type="number" min="0" className={`${input} pl-9`} value={form.mileage||''} onChange={e=>set('mileage',Number(e.target.value))}/></div>],['Combustível',<select className={input} value={form.fuel} onChange={e=>set('fuel',e.target.value)}><option>CHEIO (1/1)</option><option>3/4</option><option>1/2</option><option>1/4</option><option>RESERVA</option></select>],['Limpeza',<select className={input} value={form.cleanliness} onChange={e=>set('cleanliness',e.target.value)}><option>IMPECÁVEL</option><option>BOM ESTADO</option><option>REGULAR</option><option>RUIM</option></select>],['Pneus',<select className={input} value={form.tires} onChange={e=>set('tires',e.target.value)}><option>BOM ESTADO</option><option>DESGASTE NORMAL</option><option>DESGASTE ELEVADO</option><option>AVARIA</option></select>],['Lataria / pintura',<select className={input} value={form.bodywork} onChange={e=>set('bodywork',e.target.value)}><option>BOM ESTADO</option><option>DESGASTE NORMAL</option><option>AVARIA</option></select>]].map(([l,c]:any)=><label key={l} className="text-[11px] font-bold uppercase text-slate-500">{l}<div className="mt-1.5">{c}</div></label>)}</div>
+   <div className="mt-5 rounded-xl border bg-slate-50 p-4"><div className="mb-3 flex items-center gap-2 font-black text-slate-800"><ShieldCheck className="h-4 w-4 text-emerald-600"/>Itens obrigatórios</div><div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[['spareTire','Estepe'],['jack','Macaco'],['wheelWrench','Chave de roda'],['triangle','Triângulo']].map(([k,l])=><label key={k} className="flex gap-2 rounded-lg border bg-white p-3 text-sm"><input type="checkbox" checked={Boolean((form as any)[k])} onChange={e=>set(k,e.target.checked)}/>{l}</label>)}</div></div>
+   <div className="mt-5 grid gap-4 md:grid-cols-2"><label className="text-[11px] font-bold uppercase text-slate-500">Avarias / danos<textarea className={`${input} mt-1.5 resize-none`} rows={4} value={form.damages} onChange={e=>set('damages',e.target.value)} placeholder="Descreva riscos, amassados, trincas..."/></label><label className="text-[11px] font-bold uppercase text-slate-500">Observações<textarea className={`${input} mt-1.5 resize-none`} rows={4} value={form.notes} onChange={e=>set('notes',e.target.value)}/></label></div>
+   <div className="mt-4 grid gap-4 md:grid-cols-2"><input className={input} value={form.responsible} onChange={e=>set('responsible',e.target.value)} placeholder="Responsável"/><div className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-slate-500"><Camera className="h-5 w-5"/>Fotos serão conectadas na próxima etapa.</div></div>
+   <div className="mt-6 flex justify-end gap-2 border-t pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)}>Cancelar</Button><Button type="submit" variant="primary" className="gap-2"><CheckCircle2 className="h-4 w-4"/>Salvar Vistoria</Button></div>
+  </form></div></div>}
+
+  {view&&<div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/50 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl"><div className="flex justify-between border-b p-5"><div><h2 className="text-lg font-black">Detalhes da Vistoria</h2><p className="text-xs text-slate-500">{view.rentalNumber} • {typeLabel(view.type)}</p></div><button onClick={()=>setView(null)}><X/></button></div><div className="grid gap-4 p-5 md:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><b>{view.clientName}</b><p className="text-xs text-slate-500">{view.vehiclePlate} • {view.vehicleDescription}</p></div><div className="rounded-xl bg-slate-50 p-4"><b>{dateLabel(view.date)}</b><p className="text-xs text-slate-500">{view.mileage.toLocaleString('pt-BR')} KM • {view.fuel}</p></div><div className="rounded-xl border p-4 text-xs leading-7"><b>Checklist</b><br/>Limpeza: <b>{view.cleanliness}</b><br/>Pneus: <b>{view.tires}</b><br/>Lataria: <b>{view.bodywork}</b><br/>Estepe: <b>{view.spareTire?'OK':'AUSENTE'}</b> • Macaco: <b>{view.jack?'OK':'AUSENTE'}</b><br/>Chave: <b>{view.wheelWrench?'OK':'AUSENTE'}</b> • Triângulo: <b>{view.triangle?'OK':'AUSENTE'}</b></div><div className="rounded-xl border p-4"><Badge variant={view.status==='APROVADA'?'success':'warning'}>{view.status==='APROVADA'?'APROVADA':'APROVADA COM RESSALVA'}</Badge>{view.damages&&<p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800"><b>Avarias:</b> {view.damages}</p>}</div>{view.notes&&<div className="md:col-span-2 rounded-xl border p-4 text-sm text-slate-600"><b>Observações:</b> {view.notes}</div>}</div><div className="flex justify-end border-t p-5"><Button variant="secondary" onClick={()=>setView(null)}>Fechar</Button></div></div></div>}
+ </div>;
+};
+export default InspectionsPage;

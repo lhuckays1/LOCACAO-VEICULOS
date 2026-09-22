@@ -9,6 +9,7 @@ router.use(authMiddleware);
 router.get('/', (req, res, next) => inspectionsController.list(req, res, next));
 router.get('/:id', (req, res, next) => inspectionsController.getById(req, res, next));
 router.post('/', authorize(['ADMIN', 'MANAGER', 'OPERATOR']), (req, res, next) => inspectionsController.create(req, res, next));
+router.put('/:id', authorize(['ADMIN', 'MANAGER', 'OPERATOR']), (req, res, next) => inspectionsController.update(req, res, next));
 router.delete('/:id', authorize(['ADMIN', 'MANAGER']), (req, res, next) => inspectionsController.delete(req, res, next));
 
 export default router;
