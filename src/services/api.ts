@@ -257,6 +257,87 @@ export const api = {
       }),
   },
 
+  // Maintenance Module
+  maintenance: {
+    list: (params?: {
+      status?: string;
+      type?: string;
+      vehicleId?: string;
+      workshopId?: string;
+      supplierId?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+    }) => {
+      const query = new URLSearchParams();
+
+      if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+      if (params?.type && params.type !== 'ALL') query.set('type', params.type);
+      if (params?.vehicleId) query.set('vehicleId', params.vehicleId);
+      if (params?.workshopId) query.set('workshopId', params.workshopId);
+      if (params?.supplierId) query.set('supplierId', params.supplierId);
+      if (params?.search) query.set('search', params.search);
+      if (params?.startDate) query.set('startDate', params.startDate);
+      if (params?.endDate) query.set('endDate', params.endDate);
+
+      const qs = query.toString();
+      return request<{ total: number; data: any[] }>(
+        `/maintenance${qs ? `?${qs}` : ''}`
+      );
+    },
+
+    dashboard: () =>
+      request<{
+        kpis: {
+          totalCount: number;
+          scheduledCount: number;
+          inProgressCount: number;
+          waitingPartsCount: number;
+          completedCount: number;
+          cancelledCount: number;
+          totalCost: number;
+          monthCost: number;
+          yearCost: number;
+          activeAlertsTotal: number;
+          overdueAlertsCount: number;
+          upcomingAlertsCount: number;
+          attentionAlertsCount: number;
+        };
+        costByType: Record<string, number>;
+        topVehicles: any[];
+      }>('/maintenance/dashboard'),
+
+    create: (data: any) =>
+      request<{ message: string; data: any }>('/maintenance', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getById: (id: string) =>
+      request<{ data: any }>(`/maintenance/${id}`),
+
+    start: (id: string) =>
+      request<{ message: string; data: any }>(`/maintenance/${id}/start`, {
+        method: 'POST',
+      }),
+
+    complete: (id: string, data: any) =>
+      request<{ message: string; data: any }>(`/maintenance/${id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    cancel: (id: string, motivo?: string) =>
+      request<{ message: string; data: any }>(`/maintenance/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ motivo }),
+      }),
+    delete: (id: string) =>
+      request<{ message: string; data: any }>(`/maintenance/${id}`, {
+        method: 'DELETE',
+      }),
+  },
+
   // Financial Module
   financial: {
     getDashboard: () => request<any>('/financial/dashboard'),
