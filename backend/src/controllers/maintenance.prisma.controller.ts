@@ -620,7 +620,8 @@ export class PrismaMaintenanceController {
         ? `CONCLUSÃO: ${normalizeText(observacoes)}`
         : `CONCLUSÃO: VALOR REAL INFORMADO: R$ ${totalCost.toFixed(2).replace('.', ',')}`;
 
-      const completed = await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(
+        async (tx) => {
         const existingFinancial = await tx.financialTransaction.findFirst({
           where: {
             companyId,
@@ -828,17 +829,25 @@ export class PrismaMaintenanceController {
           },
         });
 
-        return tx.maintenance.findUnique({
-          where: { id: maintenance.id },
-          include: {
-            vehicle: true,
-            workshopRef: true,
-            supplierRef: true,
-            services: true,
-            parts: true,
-            financialTransaction: true,
-          },
-        });
+        return maintenance.id;
+        },
+        {
+          maxWait: 10000,
+          timeout: 30000,
+        }
+      );
+
+      // Consulta pesada de relações fica fora da transação para não consumir o timeout.
+      const completed = await prisma.maintenance.findUnique({
+        where: { id: maintenance.id },
+        include: {
+          vehicle: true,
+          workshopRef: true,
+          supplierRef: true,
+          services: true,
+          parts: true,
+          financialTransaction: true,
+        },
       });
 
       res.json({

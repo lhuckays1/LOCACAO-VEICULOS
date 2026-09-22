@@ -332,6 +332,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ motivo }),
       }),
+
     delete: (id: string) =>
       request<{ message: string; data: any }>(`/maintenance/${id}`, {
         method: 'DELETE',
