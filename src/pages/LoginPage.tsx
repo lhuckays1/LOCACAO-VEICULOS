@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Role } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useToast } from '../components/ui/Toast';
 import { maskCPFOrCNPJ, maskPhone } from '../utils/formatters';
-import { Car, Shield, Lock, Mail, Building2, UserCheck, ArrowRight } from 'lucide-react';
+import { Car, Lock, Mail, Building2, UserCheck, ArrowRight } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, register, loginAsDemo } = useAuth();
+  const { login, register } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -64,18 +63,6 @@ export const LoginPage: React.FC = () => {
       toastSuccess('Cadastro realizado!', 'Empresa e administrador configurados com sucesso.');
     } catch (err: any) {
       toastError('Erro no cadastro', err.message || 'Verifique os dados informados.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickDemo = async (role: Role) => {
-    setIsLoading(true);
-    try {
-      await loginAsDemo(role);
-      toastSuccess(`Conectado como ${role}`, 'Ambiente de testes carregado.');
-    } catch (err: any) {
-      toastError('Erro no login rápido', err.message);
     } finally {
       setIsLoading(false);
     }
@@ -237,62 +224,6 @@ export const LoginPage: React.FC = () => {
             </form>
           )}
 
-          {/* Quick Demo Login Helper for Evaluators & Testers */}
-          <div className="mt-6 pt-5 border-t border-slate-800">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 text-center flex items-center justify-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-emerald-400" />
-              Acesso Rápido de Testes (Perfis RBAC)
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('ADMIN')}
-                className="p-2 text-left bg-slate-950/80 hover:bg-slate-800/90 border border-slate-800 rounded-lg text-xs transition-colors"
-              >
-                <div className="font-bold text-white flex items-center justify-between">
-                  <span>ADMIN</span>
-                  <span className="text-[10px] text-emerald-400 font-mono">100%</span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">Acesso Total</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('MANAGER')}
-                className="p-2 text-left bg-slate-950/80 hover:bg-slate-800/90 border border-slate-800 rounded-lg text-xs transition-colors"
-              >
-                <div className="font-bold text-white flex items-center justify-between">
-                  <span>GERENTE</span>
-                  <span className="text-[10px] text-blue-400 font-mono">OP</span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">Operação & Frota</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('OPERATOR')}
-                className="p-2 text-left bg-slate-950/80 hover:bg-slate-800/90 border border-slate-800 rounded-lg text-xs transition-colors"
-              >
-                <div className="font-bold text-white flex items-center justify-between">
-                  <span>OPERADOR</span>
-                  <span className="text-[10px] text-amber-400 font-mono">LOC</span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">Clientes & Locações</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('FINANCIAL')}
-                className="p-2 text-left bg-slate-950/80 hover:bg-slate-800/90 border border-slate-800 rounded-lg text-xs transition-colors"
-              >
-                <div className="font-bold text-white flex items-center justify-between">
-                  <span>FINANCEIRO</span>
-                  <span className="text-[10px] text-emerald-400 font-mono">FIN</span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">Contas & Receitas</div>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Footer info */}
