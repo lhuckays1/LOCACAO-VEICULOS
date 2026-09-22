@@ -398,20 +398,22 @@ export class RentalsController {
     tipoCobranca: string,
     diaVencimento: number
   ): string {
-    const date = this.parseDateOnlyToUtcNoon(startDateStr);
+    const raw = String(startDateStr || '').trim();
+    const datePart = raw.slice(0, 10);
 
-    if (Number.isNaN(date.getTime())) {
-      return new Date().toISOString().split('T')[0];
+    // Datas de locação são DATE-ONLY.
+    // Nunca usamos new Date("YYYY-MM-DD"), pois no Brasil
+    // isso pode voltar um dia ao converter para UTC.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+      return new Date().toISOString().slice(0, 10);
     }
 
-    // A primeira parcela sempre nasce exatamente na data de início.
-    // Não usamos Date("YYYY-MM-DD") nem métodos locais para evitar
-    // deslocamento de um dia em fusos como America/Sao_Paulo.
-    if (periodIndex === 0) {
-      return date.toISOString().slice(0, 10);
-    }
+    const [year, month, day] = datePart.split('-').map(Number);
 
-    const frequency = String(tipoCobranca).toUpperCase();
+    // Trabalhamos em UTC para eliminar completamente o efeito do fuso.
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+
+    const frequency = String(tipoCobranca || '').toUpperCase();
 
     if (frequency === 'DIARIA') {
       date.setUTCDate(date.getUTCDate() + periodIndex);
@@ -420,14 +422,26 @@ export class RentalsController {
     } else if (frequency === 'QUINZENAL') {
       date.setUTCDate(date.getUTCDate() + periodIndex * 15);
     } else if (frequency === 'MENSAL') {
+      const targetDay = diaVencimento || day;
+
+      // Primeiro vai para o mês correto.
+      date.setUTCDate(1);
       date.setUTCMonth(date.getUTCMonth() + periodIndex);
 
-      const maxDaysInMonth = new Date(
-        Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 12, 0, 0)
+      // Último dia do mês.
+      const lastDayOfMonth = new Date(
+        Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth() + 1,
+          0,
+          12,
+          0,
+          0
+        )
       ).getUTCDate();
 
       date.setUTCDate(
-        Math.min(diaVencimento || date.getUTCDate(), maxDaysInMonth)
+        Math.min(targetDay, lastDayOfMonth)
       );
     }
 

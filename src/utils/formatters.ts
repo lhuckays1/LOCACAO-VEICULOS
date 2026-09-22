@@ -94,9 +94,29 @@ export function maskMileage(val: number | string | null | undefined): string {
 
 export function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return '—';
+
   try {
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
+    const value = String(dateString).trim();
+
+    // Datas DATE-ONLY vindas de <input type="date">
+    // NÃO devem passar por new Date("YYYY-MM-DD"),
+    // pois o JavaScript interpreta essa string como UTC
+    // e pode transformar 28/08 em 27/08 no fuso brasileiro.
+    const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      return `${day}/${month}/${year}`;
+    }
+
+    // Para datas que realmente possuem horário/timezone,
+    // mantemos a conversão normal.
+    const d = new Date(value);
+
+    if (isNaN(d.getTime())) {
+      return dateString;
+    }
+
     return new Intl.DateTimeFormat('pt-BR').format(d);
   } catch {
     return dateString;
