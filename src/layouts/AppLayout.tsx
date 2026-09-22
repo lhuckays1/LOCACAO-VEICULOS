@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { ChangePasswordModal } from '../components/auth/ChangePasswordModal';
 
 export type NavigationTab =
   | 'DASHBOARD'
@@ -55,6 +56,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const { user, company, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const navItems = [
     { id: 'DASHBOARD' as NavigationTab, label: 'DASHBOARD', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -155,28 +157,50 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           })}
         </nav>
 
-        {/* Bottom User Info & Logout */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/40">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0 flex-1 mr-2">
-              <p className="text-xs font-bold text-white truncate">{user?.name || 'USUÁRIO'}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                  {user?.role || 'OPERATOR'}
-                </span>
+        {/* Bottom User Info & Actions */}
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1 mr-2">
+                <p className="text-xs font-bold text-white truncate">
+                  {user?.name || 'USUÁRIO'}
+                </p>
+
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                    {user?.role || 'OPERATOR'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordOpen(true)}
+                  title="Alterar senha"
+                  className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  <KeyRound className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={logout}
+                  title="Sair do Sistema"
+                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            <button
-              onClick={logout}
-              title="Sair do Sistema"
-              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
-        </div>
       </aside>
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

@@ -108,6 +108,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ refreshToken }),
       }),
+
+    changePassword: (data: {
+      currentPassword: string;
+      newPassword: string;
+    }) =>
+      request<{ message: string }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+      
     logout: () =>
       request<any>('/auth/logout', {
         method: 'POST',

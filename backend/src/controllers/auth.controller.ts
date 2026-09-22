@@ -5,6 +5,7 @@ import {
   registerSchema,
   loginSchema,
   refreshSchema,
+  changePasswordSchema,
 } from '../schemas/index.js';
 
 import {
@@ -776,6 +777,108 @@ export class AuthController {
           user.company,
       });
 
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async changePassword(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          error: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado.',
+        });
+
+        return;
+      }
+
+      const data = changePasswordSchema.parse(req.body);
+
+      const settings = await this.getPlatformSettings();
+
+      const user = await prisma.user.findUnique({
+        where: {
+          id: req.user.userId,
+        },
+      });
+
+      if (!user) {
+        res.status(404).json({
+          error: 'USER_NOT_FOUND',
+          message: 'Usuário não encontrado.',
+        });
+
+        return;
+      }
+
+      if (!user.active) {
+        res.status(403).json({
+          error: 'USER_INACTIVE',
+          message: 'Usuário inativo.',
+        });
+
+        return;
+      }
+
+      const currentPasswordValid = comparePassword(
+        data.currentPassword,
+        user.password
+      );
+
+      if (!currentPasswordValid) {
+        res.status(401).json({
+          error: 'INVALID_CURRENT_PASSWORD',
+          message: 'A senha atual está incorreta.',
+        });
+
+        return;
+      }
+
+      if (data.currentPassword === data.newPassword) {
+        res.status(400).json({
+          error: 'PASSWORD_MUST_BE_DIFFERENT',
+          message:
+            'A nova senha deve ser diferente da senha atual.',
+        });
+
+        return;
+      }
+
+      const passwordError = this.validatePasswordPolicy(
+        data.newPassword,
+        settings
+      );
+
+      if (passwordError) {
+        res.status(400).json({
+          error: 'INVALID_NEW_PASSWORD',
+          message: passwordError,
+        });
+
+        return;
+      }
+
+      const passwordHash = hashPassword(
+        data.newPassword
+      );
+
+      await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          password: passwordHash,
+        },
+      });
+
+      res.json({
+        message: 'Senha alterada com sucesso.',
+      });
     } catch (err) {
       next(err);
     }

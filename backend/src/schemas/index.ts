@@ -21,6 +21,11 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1, 'Token de atualização obrigatório'),
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Senha atual é obrigatória'),
+  newPassword: z.string().min(1, 'Nova senha é obrigatória'),
+});
+
 export const clientSchema = z.object({
   type: z.enum(['PF', 'PJ']).default('PF'),
   name: z.string().min(3, 'Nome deve ter no mínimo 3 caracteres'),
