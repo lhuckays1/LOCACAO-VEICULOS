@@ -467,6 +467,37 @@ export const api = {
       }),
   },
 
+  // Inspections Module — adicionar dentro do objeto `api` de src/services/api.ts
+  inspections: {
+    list: (params?: {
+      vehicleId?: string;
+      rentalId?: string;
+      type?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+    }) => {
+      const query = new URLSearchParams();
+      if (params?.vehicleId && params.vehicleId !== 'ALL') query.set('vehicleId', params.vehicleId);
+      if (params?.rentalId && params.rentalId !== 'ALL') query.set('rentalId', params.rentalId);
+      if (params?.type && params.type !== 'ALL') query.set('type', params.type);
+      if (params?.search) query.set('search', params.search);
+      if (params?.startDate) query.set('startDate', params.startDate);
+      if (params?.endDate) query.set('endDate', params.endDate);
+      const qs = query.toString();
+      return request<{ total: number; data: any[] }>(`/inspections${qs ? `?${qs}` : ''}`);
+    },
+    getById: (id: string) => request<{ data: any }>(`/inspections/${id}`),
+    create: (data: any) => request<{ message: string; data: any }>('/inspections', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    delete: (id: string) => request<{ message: string; data: any }>(`/inspections/${id}`, {
+      method: 'DELETE',
+    }),
+  },
+
+
   // Super Admin
 superAdmin: {
   getAdministrators: () =>
@@ -580,3 +611,5 @@ superAdmin: {
       }),
   },
 };
+
+
