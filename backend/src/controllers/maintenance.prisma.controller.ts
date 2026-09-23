@@ -650,8 +650,18 @@ export class PrismaMaintenanceController {
         });
 
         if (!category) {
-          category = await tx.financialCategory.create({
-            data: {
+          category = await tx.financialCategory.upsert({
+            where: {
+              companyId_name_type: {
+                companyId,
+                name: 'MANUTENÇÃO & PEÇAS',
+                type: FinancialType.EXPENSE,
+              },
+            },
+            update: {
+              active: true,
+            },
+            create: {
               companyId,
               name: 'MANUTENÇÃO & PEÇAS',
               type: FinancialType.EXPENSE,
