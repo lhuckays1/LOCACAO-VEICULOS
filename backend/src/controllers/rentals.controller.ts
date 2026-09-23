@@ -10,11 +10,11 @@ import {
 import { AuthenticatedRequest } from '../middlewares/auth.middleware.js';
 
 /**
- * Controlador de LocaÃ§Ãµes
+ * Controlador de Locações
  *
  * IMPORTANTE:
- * Este controlador usa exclusivamente o Prisma para persistÃªncia.
- * NÃ£o utiliza mais db.rentals/db.clients/db.vehicles em memÃ³ria.
+ * Este controlador usa exclusivamente o Prisma para persistência.
+ * Não utiliza mais db.rentals/db.clients/db.vehicles em memória.
  */
 export class RentalsController {
   private normalizeStatus(status: string): string {
@@ -148,8 +148,8 @@ export class RentalsController {
       };
     }
 
-    // A franquia Ã© renovada no aniversÃ¡rio mensal do inÃ­cio da locaÃ§Ã£o.
-    // Ex.: inÃ­cio em 27/08 -> ciclos 27/08-26/09, 27/09-26/10 etc.
+    // A franquia é renovada no aniversário mensal do início da locação.
+    // Ex.: início em 27/08 -> ciclos 27/08-26/09, 27/09-26/10 etc.
     let months =
       (reference.getFullYear() - startDate.getFullYear()) * 12 +
       (reference.getMonth() - startDate.getMonth());
@@ -298,8 +298,8 @@ export class RentalsController {
           }
         : null,
 
-      // Controle de franquia mensal: o saldo Ã© renovado a cada aniversÃ¡rio
-      // da locaÃ§Ã£o e nunca Ã© acumulado para o mÃªs seguinte.
+      // Controle de franquia mensal: o saldo é renovado a cada aniversário
+      // da locação e nunca é acumulado para o mês seguinte.
       ...(() => {
         const mileageControl = this.getMonthlyMileageControl(
           rental,
@@ -401,7 +401,7 @@ export class RentalsController {
     const raw = String(startDateStr || '').trim();
     const datePart = raw.slice(0, 10);
 
-    // Datas de locaÃ§Ã£o sÃ£o DATE-ONLY.
+    // Datas de locação são DATE-ONLY.
     // Nunca usamos new Date("YYYY-MM-DD"), pois no Brasil
     // isso pode voltar um dia ao converter para UTC.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
@@ -424,11 +424,11 @@ export class RentalsController {
     } else if (frequency === 'MENSAL') {
       const targetDay = diaVencimento || day;
 
-      // Primeiro vai para o mÃªs correto.
+      // Primeiro vai para o mês correto.
       date.setUTCDate(1);
       date.setUTCMonth(date.getUTCMonth() + periodIndex);
 
-      // Ãšltimo dia do mÃªs.
+      // Último dia do mês.
       const lastDayOfMonth = new Date(
         Date.UTC(
           date.getUTCFullYear(),
@@ -603,7 +603,7 @@ export class RentalsController {
       if (!companyId) {
         res.status(400).json({
           error: 'COMPANY_REQUIRED',
-          message: 'Empresa nÃ£o identificada para esta operaÃ§Ã£o.',
+          message: 'Empresa não identificada para esta operação.',
         });
         return;
       }
@@ -785,7 +785,7 @@ export class RentalsController {
       if (!rental) {
         res.status(404).json({
           error: 'RENTAL_NOT_FOUND',
-          message: 'LocaÃ§Ã£o nÃ£o encontrada.',
+          message: 'Locação não encontrada.',
         });
         return;
       }
@@ -835,7 +835,7 @@ export class RentalsController {
       if (!companyId) {
         res.status(400).json({
           error: 'COMPANY_REQUIRED',
-          message: 'Empresa nÃ£o identificada para esta operaÃ§Ã£o.',
+          message: 'Empresa não identificada para esta operação.',
         });
         return;
       }
@@ -851,7 +851,7 @@ export class RentalsController {
         res.status(400).json({
           error: 'MISSING_FIELDS',
           message:
-            'Cliente, veÃ­culo, data de inÃ­cio e data de tÃ©rmino sÃ£o obrigatÃ³rios.',
+            'Cliente, veículo, data de início e data de término são obrigatórios.',
         });
         return;
       }
@@ -867,7 +867,7 @@ export class RentalsController {
         res.status(400).json({
           error: 'INVALID_DATES',
           message:
-            'As datas da locaÃ§Ã£o sÃ£o invÃ¡lidas ou a data de tÃ©rmino Ã© anterior Ã  data de inÃ­cio.',
+            'As datas da locação são inválidas ou a data de término é anterior à data de início.',
         });
         return;
       }
@@ -1103,13 +1103,13 @@ export class RentalsController {
               tenantId: companyId,
               rentalId: rental.id,
               numeroParcela: i + 1,
-              descricao: `Parcela ${i + 1}/${quantidadePeriodos} - LocaÃ§Ã£o ${rentalNumber}`,
+              descricao: `Parcela ${i + 1}/${quantidadePeriodos} - Locação ${rentalNumber}`,
               valor: amount,
               dataVencimento: dueDate,
               formaPagamento: 'PIX',
               status: paymentStatus,
               observacoes:
-                `COBRANÃ‡A GERADA AUTOMATICAMENTE PELO CONTRATO ${rentalNumber}`,
+                `COBRANÇA GERADA AUTOMATICAMENTE PELO CONTRATO ${rentalNumber}`,
             },
           });
 
@@ -1119,7 +1119,7 @@ export class RentalsController {
               type: 'INCOME',
               origin: 'RENTAL',
               description:
-                `LocaÃ§Ã£o ${rentalNumber} - Parcela ${i + 1}/${quantidadePeriodos}`,
+                `Locação ${rentalNumber} - Parcela ${i + 1}/${quantidadePeriodos}`,
               clientId: client.id,
               vehicleId: vehicle.id,
               rentalId: rental.id,
@@ -1137,7 +1137,7 @@ export class RentalsController {
                 : 'PENDING',
               installmentNumber: i + 1,
               totalInstallments: quantidadePeriodos,
-              notes: `GERADO AUTOMATICAMENTE PELA LOCAÃ‡ÃƒO ${rentalNumber}`,
+              notes: `GERADO AUTOMATICAMENTE PELA LOCAÇÃO ${rentalNumber}`,
             },
           });
         }
@@ -1164,7 +1164,7 @@ export class RentalsController {
             mileage: kmInicial,
             date: new Date(),
             type: 'RENTAL_START',
-            notes: `INÃCIO DE LOCAÃ‡ÃƒO ${rentalNumber} - CLIENTE: ${client.name}`,
+            notes: `INÍCIO DE LOCAÇÃO ${rentalNumber} - CLIENTE: ${client.name}`,
             createdBy: req.user!.name,
           },
         });
@@ -1180,19 +1180,19 @@ export class RentalsController {
             fuelLevel:
               parsed.initialFuelLevel || 'CHEIO (1/1)',
             itemsJson: JSON.stringify([
-              { item: 'DOCUMENTAÃ‡ÃƒO (CRLV-e)', ok: true },
+              { item: 'DOCUMENTAÇÃO (CRLV-e)', ok: true },
               { item: 'CHAVE PRINCIPAL E RESERVA', ok: true },
-              { item: 'MANUAL DO VEÃCULO', ok: true },
+              { item: 'MANUAL DO VEÍCULO', ok: true },
               {
                 item: 'ESTEPE, MACACO E CHAVE DE RODA',
                 ok: true,
               },
               {
-                item: 'TRIÃ‚NGULO DE SINALIZAÃ‡ÃƒO',
+                item: 'TRIÂNGULO DE SINALIZAÇÃO',
                 ok: true,
               },
               {
-                item: 'PNEUS EM PERFEITAS CONDIÃ‡Ã•ES',
+                item: 'PNEUS EM PERFEITAS CONDIÇÕES',
                 ok: true,
               },
               {
@@ -1200,12 +1200,12 @@ export class RentalsController {
                 ok: true,
               },
               {
-                item: 'AR CONDICIONADO E ACESSÃ“RIOS',
+                item: 'AR CONDICIONADO E ACESSÓRIOS',
                 ok: true,
               },
             ]),
             notes:
-              'VISTORIA DE SAÃDA REALIZADA E APROVADA NA ENTREGA DAS CHAVES.',
+              'VISTORIA DE SAÍDA REALIZADA E APROVADA NA ENTREGA DAS CHAVES.',
           },
         });
 
@@ -1269,7 +1269,7 @@ export class RentalsController {
       });
 
       res.status(201).json({
-        message: `LocaÃ§Ã£o ${result.rentalNumber} cadastrada e gerada com sucesso!`,
+        message: `Locação ${result.rentalNumber} cadastrada e gerada com sucesso!`,
         data: createdRental
           ? this.formatRental(createdRental)
           : result,
@@ -1281,7 +1281,7 @@ export class RentalsController {
           res.status(404).json({
             error: 'CLIENT_NOT_FOUND',
             message:
-              'Cliente selecionado nÃ£o foi encontrado nesta empresa.',
+              'Cliente selecionado não foi encontrado nesta empresa.',
           });
           return;
         }
@@ -1290,7 +1290,7 @@ export class RentalsController {
           res.status(400).json({
             error: 'CLIENT_INACTIVE',
             message:
-              'NÃ£o Ã© possÃ­vel criar locaÃ§Ã£o para um cliente INATIVO no sistema.',
+              'Não é possível criar locação para um cliente INATIVO no sistema.',
           });
           return;
         }
@@ -1299,7 +1299,7 @@ export class RentalsController {
           res.status(404).json({
             error: 'VEHICLE_NOT_FOUND',
             message:
-              'VeÃ­culo selecionado nÃ£o foi encontrado nesta empresa.',
+              'Veículo selecionado não foi encontrado nesta empresa.',
           });
           return;
         }
@@ -1308,7 +1308,7 @@ export class RentalsController {
           res.status(400).json({
             error: 'VEHICLE_UNAVAILABLE',
             message:
-              'O veÃ­culo selecionado nÃ£o estÃ¡ disponÃ­vel para locaÃ§Ã£o.',
+              'O veículo selecionado não está disponível para locação.',
           });
           return;
         }
@@ -1318,7 +1318,7 @@ export class RentalsController {
 
           res.status(409).json({
             error: 'VEHICLE_ALREADY_RENTED',
-            message: `O veÃ­culo jÃ¡ possui uma locaÃ§Ã£o conflitante (${contract}).`,
+            message: `O veículo já possui uma locação conflitante (${contract}).`,
           });
           return;
         }
@@ -1330,9 +1330,9 @@ export class RentalsController {
 
   /**
    * DELETE /api/rentals/:id
-   * ExclusÃ£o definitiva de uma locaÃ§Ã£o.
-   * A operaÃ§Ã£o remove tambÃ©m os registros financeiros, parcelas, vistorias,
-   * contratos e registros de KM vinculados, dentro de uma Ãºnica transaÃ§Ã£o.
+   * Exclusão definitiva de uma locação.
+   * A operação remove também os registros financeiros, parcelas, vistorias,
+   * contratos e registros de KM vinculados, dentro de uma única transação.
    */
   async delete(
     req: AuthenticatedRequest,
@@ -1375,7 +1375,7 @@ export class RentalsController {
       if (!rental) {
         res.status(404).json({
           error: 'RENTAL_NOT_FOUND',
-          message: 'LocaÃ§Ã£o nÃ£o encontrada.',
+          message: 'Locação não encontrada.',
         });
         return;
       }
@@ -1406,7 +1406,7 @@ export class RentalsController {
               }),
               newData: JSON.stringify({
                 action: 'DELETE_RENTAL',
-                reason: 'LOCAÃ‡ÃƒO CRIADA POR ENGANO',
+                reason: 'LOCAÇÃO CRIADA POR ENGANO',
               }),
             },
           });
@@ -1447,7 +1447,7 @@ export class RentalsController {
             where: { rentalId: rental.id },
           });
 
-          // Remove somente os registros de KM gerados por esta locaÃ§Ã£o.
+          // Remove somente os registros de KM gerados por esta locação.
           await tx.vehicleMileage.deleteMany({
             where: {
               vehicleId: rental.vehicleId,
@@ -1459,8 +1459,8 @@ export class RentalsController {
             where: { id: rental.id },
           });
 
-          // Se o veÃ­culo estava sendo ocupado por esta locaÃ§Ã£o, devolve o status
-          // para DISPONÃVEL e restaura o Ãºltimo odÃ´metro conhecido antes do contrato.
+          // Se o veículo estava sendo ocupado por esta locação, devolve o status
+          // para DISPONÍVEL e restaura o último odômetro conhecido antes do contrato.
           if (rental.vehicle.status === 'RENTED' || rental.vehicle.status === 'RESERVED') {
             await tx.vehicle.update({
               where: { id: rental.vehicleId },
@@ -1484,7 +1484,7 @@ export class RentalsController {
       );
 
       res.json({
-        message: `LocaÃ§Ã£o ${deleted.rentalNumber} excluÃ­da com sucesso. O veÃ­culo foi liberado para a frota.`,
+        message: `Locação ${deleted.rentalNumber} excluída com sucesso. O veículo foi liberado para a frota.`,
         data: deleted,
       });
     } catch (err) {
@@ -1527,7 +1527,7 @@ export class RentalsController {
       if (!rental) {
         res.status(404).json({
           error: 'RENTAL_NOT_FOUND',
-          message: 'LocaÃ§Ã£o nÃ£o encontrada.',
+          message: 'Locação não encontrada.',
         });
         return;
       }
@@ -1541,8 +1541,8 @@ export class RentalsController {
         res.status(400).json({
           error: 'INVALID_STATUS_FOR_CANCELLATION',
           message:
-            `Apenas locaÃ§Ãµes com status RASCUNHO ou AGENDADA podem ser canceladas. ` +
-            `A locaÃ§Ã£o atual estÃ¡ com status "${normStatus}". Para encerrar uma locaÃ§Ã£o ativa, realize a devoluÃ§Ã£o do veÃ­culo.`,
+            `Apenas locações com status RASCUNHO ou AGENDADA podem ser canceladas. ` +
+            `A locação atual está com status "${normStatus}". Para encerrar uma locação ativa, realize a devolução do veículo.`,
         });
         return;
       }
@@ -1623,8 +1623,8 @@ export class RentalsController {
 
       res.json({
         message:
-          `LocaÃ§Ã£o ${updated.rentalNumber} cancelada com sucesso. ` +
-          `CobranÃ§as pendentes foram desativadas e o veÃ­culo liberado.`,
+          `Locação ${updated.rentalNumber} cancelada com sucesso. ` +
+          `Cobranças pendentes foram desativadas e o veículo liberado.`,
         data: updated,
       });
     } catch (err) {
@@ -1669,7 +1669,7 @@ export class RentalsController {
       if (!rental) {
         res.status(404).json({
           error: 'RENTAL_NOT_FOUND',
-          message: 'LocaÃ§Ã£o nÃ£o encontrada.',
+          message: 'Locação não encontrada.',
         });
         return;
       }
@@ -1692,8 +1692,8 @@ export class RentalsController {
             res.status(400).json({
               error: 'INVALID_FINAL_MILEAGE',
               message:
-                `A quilometragem final (${parsedFinalKm} km) nÃ£o pode ser ` +
-                `inferior Ã  quilometragem inicial da locaÃ§Ã£o ou atual do veÃ­culo (${minRequiredKm} km).`,
+                `A quilometragem final (${parsedFinalKm} km) não pode ser ` +
+                `inferior à quilometragem inicial da locação ou atual do veículo (${minRequiredKm} km).`,
             });
             return;
           }
@@ -1713,7 +1713,7 @@ export class RentalsController {
                 rental.initialFuelLevel ||
                 'CHEIO (1/1)',
               notes: notes
-                ? `${rental.notes || ''} | DEVOLUÃ‡ÃƒO: ${notes}`
+                ? `${rental.notes || ''} | DEVOLUÇÃO: ${notes}`
                     .trim()
                     .toUpperCase()
                 : rental.notes,
@@ -1730,7 +1730,7 @@ export class RentalsController {
             date: now,
             type: 'RENTAL_END',
             notes:
-              `DEVOLUÃ‡ÃƒO DE LOCAÃ‡ÃƒO ${rental.rentalNumber}`,
+              `DEVOLUÇÃO DE LOCAÇÃO ${rental.rentalNumber}`,
             createdBy: req.user!.name,
           };
 
@@ -1765,7 +1765,7 @@ export class RentalsController {
               itemsJson: JSON.stringify(
                 checkListRetorno || [
                   {
-                    item: 'DOCUMENTAÃ‡ÃƒO DEVOLVIDA',
+                    item: 'DOCUMENTAÇÃO DEVOLVIDA',
                     ok: true,
                   },
                   { item: 'CHAVES ENTREGUES', ok: true },
@@ -1778,8 +1778,8 @@ export class RentalsController {
                 ]
               ),
               notes: notes
-                ? `DEVOLUÃ‡ÃƒO: ${notes}`
-                : 'VISTORIA DE RETORNO CONCLUÃDA.',
+                ? `DEVOLUÇÃO: ${notes}`
+                : 'VISTORIA DE RETORNO CONCLUÍDA.',
             },
           });
 
@@ -1811,8 +1811,8 @@ export class RentalsController {
 
         res.json({
           message:
-            `DevoluÃ§Ã£o da locaÃ§Ã£o ${updated.rentalNumber} registrada com sucesso! ` +
-            `VeÃ­culo liberado para a frota.`,
+            `Devolução da locação ${updated.rentalNumber} registrada com sucesso! ` +
+            `Veículo liberado para a frota.`,
           data: updated,
         });
         return;
@@ -1886,7 +1886,7 @@ export class RentalsController {
 
       res.json({
         message:
-          `Status da locaÃ§Ã£o alterado para ${this.normalizeStatus(
+          `Status da locação alterado para ${this.normalizeStatus(
             updated.status
           )}.`,
         data: updated,
@@ -1908,9 +1908,9 @@ export class RentalsController {
       const companyId = req.user!.companyId;
       const { id, paymentId } = req.params;
 
-      // Mantemos o schema existente para validar forma/data/observaÃ§Ãµes.
-      // O valor pago Ã© lido diretamente do body para nÃ£o quebrar versÃµes
-      // antigas do payInstallmentSchema que ainda nÃ£o possuem valorPago.
+      // Mantemos o schema existente para validar forma/data/observações.
+      // O valor pago é lido diretamente do body para não quebrar versões
+      // antigas do payInstallmentSchema que ainda não possuem valorPago.
       const parsed = payInstallmentSchema.parse(req.body) as any;
 
       const rawValorPago = (req.body as any)?.valorPago;
@@ -1949,7 +1949,7 @@ export class RentalsController {
       ) {
         res.status(400).json({
           error: 'INVALID_CURRENT_MILEAGE',
-          message: 'A quilometragem atual deve ser um nÃºmero inteiro vÃ¡lido.',
+          message: 'A quilometragem atual deve ser um número inteiro válido.',
         });
         return;
       }
@@ -1976,7 +1976,7 @@ export class RentalsController {
       if (!rental) {
         res.status(404).json({
           error: 'RENTAL_NOT_FOUND',
-          message: 'LocaÃ§Ã£o nÃ£o encontrada.',
+          message: 'Locação não encontrada.',
         });
         return;
       }
@@ -2003,7 +2003,7 @@ export class RentalsController {
       if (!payment) {
         res.status(404).json({
           error: 'PAYMENT_NOT_FOUND',
-          message: 'Parcela de cobranÃ§a nÃ£o encontrada.',
+          message: 'Parcela de cobrança não encontrada.',
         });
         return;
       }
@@ -2011,7 +2011,7 @@ export class RentalsController {
       if (payment.status === 'CANCELADO') {
         res.status(400).json({
           error: 'PAYMENT_CANCELLED',
-          message: 'Esta parcela estÃ¡ cancelada e nÃ£o pode receber pagamento.',
+          message: 'Esta parcela está cancelada e não pode receber pagamento.',
         });
         return;
       }
@@ -2022,7 +2022,7 @@ export class RentalsController {
         res.status(409).json({
           error: 'FINANCIAL_TRANSACTION_NOT_FOUND',
           message:
-            'A parcela nÃ£o possui lanÃ§amento financeiro vinculado. Regularize o lanÃ§amento antes de registrar o recebimento.',
+            'A parcela não possui lançamento financeiro vinculado. Regularize o lançamento antes de registrar o recebimento.',
         });
         return;
       }
@@ -2037,7 +2037,7 @@ export class RentalsController {
       if (Number.isNaN(paymentDateObj.getTime())) {
         res.status(400).json({
           error: 'INVALID_PAYMENT_DATE',
-          message: 'A data de pagamento informada Ã© invÃ¡lida.',
+          message: 'A data de pagamento informada é inválida.',
         });
         return;
       }
@@ -2075,7 +2075,7 @@ export class RentalsController {
       if (currentRemaining <= 0) {
         res.status(400).json({
           error: 'PAYMENT_ALREADY_SETTLED',
-          message: 'Esta parcela jÃ¡ estÃ¡ totalmente quitada.',
+          message: 'Esta parcela já está totalmente quitada.',
         });
         return;
       }
@@ -2089,7 +2089,7 @@ export class RentalsController {
           error: 'PAYMENT_EXCEEDS_BALANCE',
           message:
             `O valor informado (R$ ${amountRequested.toFixed(2)}) ` +
-            `Ã© maior que o saldo atual da parcela (R$ ${currentRemaining.toFixed(2)}).`,
+            `é maior que o saldo atual da parcela (R$ ${currentRemaining.toFixed(2)}).`,
         });
         return;
       }
@@ -2119,7 +2119,7 @@ export class RentalsController {
         daysLate - gracePeriodDays
       );
 
-      // Os encargos sÃ£o calculados sobre o saldo devedor existente
+      // Os encargos são calculados sobre o saldo devedor existente
       // antes deste novo recebimento.
       const baseForCharges = currentRemaining;
 
@@ -2137,7 +2137,7 @@ export class RentalsController {
             (interestRate / 100) *
             chargeableDays;
         } else {
-          // Juros mensais: cada perÃ­odo iniciado de 30 dias apÃ³s a carÃªncia.
+          // Juros mensais: cada período iniciado de 30 dias após a carência.
           const monthsLate = Math.ceil(chargeableDays / 30);
           interest =
             baseForCharges *
@@ -2175,11 +2175,11 @@ export class RentalsController {
 
       // O valorPago informado representa o valor que o cliente entrega.
       // Se ele informar o valor exato do saldo principal, os encargos
-      // continuam compondo o dÃ©bito e o saldo remanescente serÃ¡ preservado.
+      // continuam compondo o débito e o saldo remanescente será preservado.
       //
-      // Para quitaÃ§Ã£o integral sem valor informado, cobramos principal +
+      // Para quitação integral sem valor informado, cobramos principal +
       // encargos. Para pagamento parcial informado, aplicamos o valor recebido
-      // ao dÃ©bito atualizado.
+      // ao débito atualizado.
       const requestedCashAmount = hasValorPago
         ? amountRequested
         : totalDueBeforePayment;
@@ -2209,8 +2209,8 @@ export class RentalsController {
           res.status(400).json({
             error: 'INVALID_CURRENT_MILEAGE',
             message:
-              `A quilometragem informada (${kmAtualInformado} km) nÃ£o pode ser ` +
-              `inferior Ã  quilometragem atual do veÃ­culo ou inicial da locaÃ§Ã£o (${minimumKm} km).`,
+              `A quilometragem informada (${kmAtualInformado} km) não pode ser ` +
+              `inferior à quilometragem atual do veículo ou inicial da locação (${minimumKm} km).`,
           });
           return;
         }
@@ -2286,7 +2286,7 @@ export class RentalsController {
             userId: req.user!.userId,
             notes:
               `RECEBIMENTO ${isFullyPaid ? 'INTEGRAL' : 'PARCIAL'} - ` +
-              `LOCAÃ‡ÃƒO ${rental.rentalNumber} - ` +
+              `LOCAÇÃO ${rental.rentalNumber} - ` +
               `PARCELA ${payment.numeroParcela}`,
           },
         });
@@ -2308,7 +2308,7 @@ export class RentalsController {
 
           if (kmAtualInformado < transactionMinimumKm) {
             throw new Error(
-              `A quilometragem informada (${kmAtualInformado} km) nÃ£o pode ser inferior Ã  quilometragem atual do veÃ­culo (${transactionMinimumKm} km).`
+              `A quilometragem informada (${kmAtualInformado} km) não pode ser inferior à quilometragem atual do veículo (${transactionMinimumKm} km).`
             );
           }
 
@@ -2334,7 +2334,7 @@ export class RentalsController {
               date: paymentDateObj,
               type: 'MANUAL',
               notes:
-                `KM INFORMADO NO RECEBIMENTO - LOCAÃ‡ÃƒO ${rental.rentalNumber} - ` +
+                `KM INFORMADO NO RECEBIMENTO - LOCAÇÃO ${rental.rentalNumber} - ` +
                 `PARCELA ${payment.numeroParcela}`,
               createdBy: req.user!.userId,
             },
@@ -2463,7 +2463,7 @@ export class RentalsController {
       if (!rental) {
         res.status(404).json({
           error: 'RENTAL_NOT_FOUND',
-          message: 'LocaÃ§Ã£o nÃ£o encontrada.',
+          message: 'Locação não encontrada.',
         });
         return;
       }
@@ -2471,7 +2471,7 @@ export class RentalsController {
       const updated = await prisma.$transaction(async (tx) => {
         const currentNotes = rental.notes || '';
         const newNotes = parsed.observacoes
-          ? `${currentNotes} | CAUÃ‡ÃƒO: ${parsed.observacoes}`
+          ? `${currentNotes} | CAUÇÃO: ${parsed.observacoes}`
               .trim()
               .toUpperCase()
           : currentNotes;
@@ -2510,7 +2510,7 @@ export class RentalsController {
 
       res.json({
         message:
-          `Status da cauÃ§Ã£o atualizado para ${parsed.statusCaucao} ` +
+          `Status da caução atualizado para ${parsed.statusCaucao} ` +
           `(R$ ${Number(parsed.caucaoRecebida).toFixed(2)} recebido).`,
         data: updated,
       });
@@ -2521,6 +2521,4 @@ export class RentalsController {
 }
 
 export const rentalsController = new RentalsController();
-
-
 
