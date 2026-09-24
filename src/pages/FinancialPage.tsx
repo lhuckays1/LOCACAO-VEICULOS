@@ -39,6 +39,43 @@ import {
 
 type FinancialTab = 'DASHBOARD' | 'RECEBER' | 'PAGAR' | 'FLUXO_CAIXA' | 'INADIMPLENCIA';
 
+const financialStatusLabel = (status?: string): string => {
+  const labels: Record<string, string> = {
+    PENDING: 'PENDENTE',
+    PAID: 'PAGO',
+    PARTIAL: 'PARCIAL',
+    OVERDUE: 'VENCIDO',
+    CANCELLED: 'CANCELADO',
+  };
+
+  return labels[status || ''] || status || 'NÃO INFORMADO';
+};
+
+const paymentMethodLabel = (method?: string): string => {
+  const labels: Record<string, string> = {
+    CASH: 'DINHEIRO',
+    PIX: 'PIX',
+    CREDIT_CARD: 'CARTÃO DE CRÉDITO',
+    DEBIT_CARD: 'CARTÃO DE DÉBITO',
+    BANK_TRANSFER: 'TRANSFERÊNCIA',
+    BOLETO: 'BOLETO',
+    OTHER: 'OUTRO',
+  };
+
+  return labels[method || ''] || method || 'NÃO INFORMADO';
+};
+
+const displayFinancialDescription = (description?: string): string => {
+  if (!description) return 'Sem descrição';
+
+  // Corrige registros antigos que foram gravados com encoding incorreto.
+  return description
+    .replace(/LocaÃ§Ã£o/g, 'Locação')
+    .replace(/LOCAÃ‡ÃƒO/g, 'LOCAÇÃO')
+    .replace(/Ã§Ã£o/g, 'ção')
+    .replace(/Ã‡ÃƒO/g, 'ÇÃO');
+};
+
 export const FinancialPage: React.FC = () => {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<FinancialTab>('DASHBOARD');
@@ -535,7 +572,7 @@ export const FinancialPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-bold text-slate-900">{tx.description}</div>
+                          <div className="font-bold text-slate-900">{displayFinancialDescription(tx.description)}</div>
                           {tx.clientName && (
                             <div className="text-[11px] text-slate-500">CLIENTE: {tx.clientName}</div>
                           )}
@@ -552,7 +589,7 @@ export const FinancialPage: React.FC = () => {
                           {maskCurrency(tx.remainingAmount)}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={tx.status}>{tx.status}</Badge>
+                          <Badge variant={tx.status}>{financialStatusLabel(tx.status)}</Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -719,7 +756,7 @@ export const FinancialPage: React.FC = () => {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-bold text-slate-900">{tx.description}</div>
+                          <div className="font-bold text-slate-900">{displayFinancialDescription(tx.description)}</div>
                           {tx.contractNumber && (
                             <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-1 py-0.5 rounded">
                               {tx.contractNumber}
@@ -752,11 +789,11 @@ export const FinancialPage: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-slate-600">
                           <span className="text-[11px] bg-slate-100 px-1.5 py-0.5 rounded font-bold">
-                            {tx.paymentMethod}
+                            {paymentMethodLabel(tx.paymentMethod)}
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={tx.status}>{tx.status}</Badge>
+                          <Badge variant={tx.status}>{financialStatusLabel(tx.status)}</Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -938,7 +975,7 @@ export const FinancialPage: React.FC = () => {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-bold text-slate-900">{tx.description}</div>
+                          <div className="font-bold text-slate-900">{displayFinancialDescription(tx.description)}</div>
                           {tx.notes && <div className="text-[11px] text-slate-500 truncate max-w-xs">{tx.notes}</div>}
                         </td>
                         <td className="px-4 py-3">
@@ -975,7 +1012,7 @@ export const FinancialPage: React.FC = () => {
                           {maskCurrency(tx.remainingAmount)}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={tx.status}>{tx.status}</Badge>
+                          <Badge variant={tx.status}>{financialStatusLabel(tx.status)}</Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -1248,7 +1285,7 @@ export const FinancialPage: React.FC = () => {
                         >
                           <div>
                             <span className="font-bold text-slate-900 block truncate max-w-[180px]">
-                              {tx.description}
+                              {displayFinancialDescription(tx.description)}
                             </span>
                             <span className="text-[10px] text-slate-500">
                               Venc: {formatDate(tx.dueDate)} • {tx.daysOverdue}d atraso

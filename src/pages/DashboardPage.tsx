@@ -26,16 +26,29 @@ import { NavigationTab } from '../layouts/AppLayout';
 
 interface DashboardPageProps {
   onNavigate: (tab: NavigationTab) => void;
-  onOpenNewRental: () => void;
-  onOpenNewVehicle: () => void;
-  onOpenNewClient: () => void;
 }
+
+const translateStatus = (status: string): string => {
+  const translations: Record<string, string> = {
+    DRAFT: 'RASCUNHO',
+    SCHEDULED: 'AGENDADO',
+    ACTIVE: 'ATIVO',
+    COMPLETED: 'CONCLUÍDO',
+    CANCELLED: 'CANCELADO',
+    OVERDUE: 'ATRASADO',
+    BLOCKED: 'BLOQUEADO',
+    IN_PROGRESS: 'EM ANDAMENTO',
+    WAITING_PARTS: 'AGUARDANDO PEÇAS',
+    PENDING: 'PENDENTE',
+    PAID: 'PAGO',
+    PARTIAL: 'PARCIAL',
+  };
+
+  return translations[status] || status;
+};
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate,
-  onOpenNewRental,
-  onOpenNewVehicle,
-  onOpenNewClient,
 }) => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [recentRentals, setRecentRentals] = useState<any[]>([]);
@@ -106,35 +119,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <p className="text-xs text-slate-300 mt-1">
             Status em tempo real das locações, veículos disponíveis, vencimentos e faturamento.
           </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <Button
-            size="sm"
-            variant="outline"
-            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-bold"
-            onClick={onOpenNewClient}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            + Cliente
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-bold"
-            onClick={onOpenNewVehicle}
-          >
-            <Car className="w-3.5 h-3.5" />
-            + Veículo
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            className="text-xs font-bold shadow-md bg-emerald-600 hover:bg-emerald-700"
-            onClick={onOpenNewRental}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Nova Locação
-          </Button>
         </div>
       </div>
 
@@ -443,7 +427,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Badge variant={r.status as any}>{r.status}</Badge>
+                          <Badge variant={r.status as any}>{translateStatus(r.status)}</Badge>
                         </td>
                       </tr>
                     ))}
@@ -486,7 +470,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <span className="font-mono font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-200 text-[11px]">
                       {m.vehiclePlate}
                     </span>
-                    <Badge variant={m.status as any}>{m.status}</Badge>
+                    <Badge variant={m.status as any}>{translateStatus(m.status)}</Badge>
                   </div>
                   <div className="font-bold text-slate-900 line-clamp-1">{m.description}</div>
                   <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-amber-100">

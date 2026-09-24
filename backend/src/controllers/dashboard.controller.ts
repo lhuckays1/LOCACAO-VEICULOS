@@ -1,151 +1,389 @@
 import { Response, NextFunction } from 'express';
-import { db } from '../db/store.js';
+import {
+  FinancialStatus,
+  FinancialType,
+  MaintenanceStatus,
+  PaymentStatus,
+  RentalStatus,
+  VehicleStatus,
+} from '@prisma/client';
+
+import { prisma } from '../config/prisma.js';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware.js';
 
+const decimalToNumber = (value: unknown): number => Number(value ?? 0);
+
 export class DashboardController {
-  async getMetrics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getMetrics(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
+      const companyId = req.user?.companyId;
 
-      // Update payments status based on today's date
-      db.updateRentalPaymentStatuses();
+      if (!companyId) {
+        res.status(403).json({
+          error: 'COMPANY_REQUIRED',
+          message: 'Usuário não está vinculado a uma empresa.',
+        });
+        return;
+      }
 
-      const companyVehicles = db.vehicles.filter((v) => v.companyId === companyId);
-      const companyClients = db.clients.filter((c) => c.companyId === companyId);
-      const companyRentals = db.rentals.filter(
-        (r) => r.companyId === companyId || r.tenantId === companyId
+      /*
+       * ============================================================
+       * 1. FROTA
+       * ============================================================
+       */
+
+      const [
+        totalVehicles,
+        availableVehicles,
+        rentedVehicles,
+        maintenanceVehicles,
+        blockedVehicles,
+        soldVehicles,
+        totalClients,
+        activeClients,
+        totalRentals,
+        activeRentals,
+        overdueRentals,
+      ] = await Promise.all([
+        prisma.vehicle.count({
+          where: { companyId },
+        }),
+
+        prisma.vehicle.count({
+          where: {
+            companyId,
+            status: VehicleStatus.AVAILABLE,
+          },
+        }),
+
+        prisma.vehicle.count({
+          where: {
+            companyId,
+            status: VehicleStatus.RENTED,
+          },
+        }),
+
+        prisma.vehicle.count({
+          where: {
+            companyId,
+            status: VehicleStatus.MAINTENANCE,
+          },
+        }),
+
+        prisma.vehicle.count({
+          where: {
+            companyId,
+            status: VehicleStatus.BLOCKED,
+          },
+        }),
+
+        prisma.vehicle.count({
+          where: {
+            companyId,
+            status: VehicleStatus.SOLD,
+          },
+        }),
+
+        /*
+         * ==========================================================
+         * 2. CLIENTES
+         * ==========================================================
+         */
+
+        prisma.client.count({
+          where: { companyId },
+        }),
+
+        prisma.client.count({
+          where: {
+            companyId,
+            active: true,
+          },
+        }),
+
+        /*
+         * ==========================================================
+         * 3. LOCAÇÕES
+         * ==========================================================
+         */
+
+        prisma.rental.count({
+          where: { companyId },
+        }),
+
+        prisma.rental.count({
+          where: {
+            companyId,
+            status: RentalStatus.ACTIVE,
+          },
+        }),
+
+        prisma.rental.count({
+          where: {
+            companyId,
+            OR: [
+              {
+                status: RentalStatus.OVERDUE,
+              },
+              {
+                rentalPayments: {
+                  some: {
+                    status: 'ATRASADO',
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+
+      /*
+       * ============================================================
+       * 4. FINANCEIRO
+       * ============================================================
+       *
+       * O financeiro oficial do sistema está em
+       * FinancialTransaction.
+       */
+
+      const [
+        paidIncome,
+        pendingIncome,
+        overdueIncome,
+        totalExpensesAggregate,
+      ] = await Promise.all([
+        prisma.financialTransaction.aggregate({
+          where: {
+            companyId,
+            type: FinancialType.INCOME,
+            status: FinancialStatus.PAID,
+          },
+          _sum: {
+            paidAmount: true,
+          },
+        }),
+
+        prisma.financialTransaction.aggregate({
+          where: {
+            companyId,
+            type: FinancialType.INCOME,
+            status: FinancialStatus.PENDING,
+          },
+          _sum: {
+            remainingAmount: true,
+          },
+        }),
+
+        prisma.financialTransaction.aggregate({
+          where: {
+            companyId,
+            type: FinancialType.INCOME,
+            status: FinancialStatus.OVERDUE,
+          },
+          _sum: {
+            remainingAmount: true,
+          },
+        }),
+
+        prisma.financialTransaction.aggregate({
+          where: {
+            companyId,
+            type: FinancialType.EXPENSE,
+          },
+          _sum: {
+            netAmount: true,
+          },
+        }),
+      ]);
+
+      const totalRevenue = decimalToNumber(
+        paidIncome._sum.paidAmount,
       );
-      const companyPayments = db.rentalPayments.filter(
-        (p) => p.tenantId === companyId
+
+      const pendingRevenue = decimalToNumber(
+        pendingIncome._sum.remainingAmount,
       );
-      const legacyPayments = db.payments.filter((p) => p.companyId === companyId);
-      const companyExpenses = db.expenses.filter((e) => e.companyId === companyId);
-      const companyMaintenances = db.maintenances.filter((m) => m.companyId === companyId);
 
-      // 1. Vehicle counts by status
-      const totalVehicles = companyVehicles.length;
-      const availableVehicles = companyVehicles.filter((v) => v.status === 'AVAILABLE').length;
-      const rentedVehicles = companyVehicles.filter((v) => v.status === 'RENTED').length;
-      const maintenanceVehicles = companyVehicles.filter((v) => v.status === 'MAINTENANCE').length;
-      const blockedVehicles = companyVehicles.filter((v) => v.status === 'BLOCKED').length;
-      const soldVehicles = companyVehicles.filter((v) => v.status === 'SOLD').length;
-
-      // 2. Clients
-      const totalClients = companyClients.length;
-      const activeClients = companyClients.filter((c) => c.active).length;
-
-      // 3. Rentals
-      const activeRentals = companyRentals.filter(
-        (r) => r.status === 'ATIVA' || r.status === 'ACTIVE'
-      ).length;
-
-      // Overdue rentals: rentals with overdue payments or status ATRASADA
-      const overdueRentalIds = new Set(
-        companyPayments.filter((p) => p.status === 'ATRASADO').map((p) => p.rentalId)
+      const overdueRevenue = decimalToNumber(
+        overdueIncome._sum.remainingAmount,
       );
-      const overdueRentals = companyRentals.filter(
-        (r) => r.status === 'ATRASADA' || r.status === 'OVERDUE' || overdueRentalIds.has(r.id)
-      ).length;
 
-      const totalRentals = companyRentals.length;
+      const totalExpenses = decimalToNumber(
+        totalExpensesAggregate._sum.netAmount,
+      );
 
-      // 4. Financial Calculations from rental payments
-      const rentalPaidRevenue = companyPayments
-        .filter((p) => p.status === 'PAGO')
-        .reduce((sum, p) => sum + p.valor, 0);
+      const netProfit = Number(
+        (totalRevenue - totalExpenses).toFixed(2),
+      );
 
-      const legacyPaidRevenue = legacyPayments
-        .filter((p) => p.status === 'PAID')
-        .reduce((sum, p) => sum + (p.paidAmount || p.amount || 0), 0);
+      /*
+       * ============================================================
+       * 5. UTILIZAÇÃO DA FROTA
+       * ============================================================
+       */
 
-      const totalRevenue = Math.max(rentalPaidRevenue, legacyPaidRevenue);
-
-      const pendingRevenue = companyPayments
-        .filter((p) => p.status === 'PENDENTE')
-        .reduce((sum, p) => sum + p.valor, 0);
-
-      const overdueRevenue = companyPayments
-        .filter((p) => p.status === 'ATRASADO')
-        .reduce((sum, p) => sum + p.valor, 0);
-
-      const totalExpenses = companyExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-      const netProfit = totalRevenue - totalExpenses;
-
-      // Fleet utilization rate: (veiculosAlugados / totalVeiculosAtivos) * 100
       const activeFleetTotal = totalVehicles - soldVehicles;
+
       const utilizationRate =
-        activeFleetTotal > 0 ? Math.round((rentedVehicles / activeFleetTotal) * 100) : 0;
+        activeFleetTotal > 0
+          ? Math.round(
+              (rentedVehicles / activeFleetTotal) * 100,
+            )
+          : 0;
 
-      // Próximos Vencimentos de Cobranças de Locação
-      const upcomingDuePayments = companyPayments
-        .filter((p) => p.status === 'PENDENTE' || p.status === 'ATRASADO')
-        .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento))
-        .slice(0, 10)
-        .map((p) => {
-          const rental = companyRentals.find((r) => r.id === p.rentalId);
-          const client = rental
-            ? companyClients.find((c) => c.id === (rental.clienteId || rental.clientId))
-            : null;
-          const vehicle = rental
-            ? companyVehicles.find((v) => v.id === (rental.veiculoId || rental.vehicleId))
-            : null;
+      /*
+       * ============================================================
+       * 6. PRÓXIMOS VENCIMENTOS
+       * ============================================================
+       */
 
-          return {
-            id: p.id,
-            rentalId: p.rentalId,
-            codigoContrato: rental?.codigoContrato || rental?.rentalNumber || 'N/A',
-            clienteNome: client ? client.name : 'CLIENTE NÃO IDENTIFICADO',
-            clienteTelefone: client ? client.phone : '',
-            veiculoModelo: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'VEÍCULO NÃO IDENTIFICADO',
-            veiculoPlaca: vehicle ? vehicle.plate : '---',
-            numeroParcela: p.numeroParcela,
-            dataVencimento: p.dataVencimento,
-            valor: p.valor,
-            status: p.status,
-            descricao: p.descricao,
-          };
+      const upcomingPayments = await prisma.rentalPayment.findMany({
+        where: {
+          status: {
+            in: ['PENDENTE', 'ATRASADO'],
+          },
+          rental: {
+            companyId,
+          },
+        },
+        include: {
+          rental: {
+            include: {
+              client: true,
+              vehicle: true,
+            },
+          },
+        },
+        orderBy: {
+          dataVencimento: 'asc',
+        },
+        take: 10,
+      });
+
+      const upcomingDuePayments = upcomingPayments.map((payment) => ({
+        id: payment.id,
+        rentalId: payment.rentalId,
+        codigoContrato:
+          payment.rental.codigoContrato ||
+          payment.rental.rentalNumber ||
+          'N/A',
+        clienteNome:
+          payment.rental.client?.name ||
+          'CLIENTE NÃO IDENTIFICADO',
+        clienteTelefone:
+          payment.rental.client?.phone || '',
+        veiculoModelo: payment.rental.vehicle
+          ? `${payment.rental.vehicle.brand} ${payment.rental.vehicle.model}`
+          : 'VEÍCULO NÃO IDENTIFICADO',
+        veiculoPlaca:
+          payment.rental.vehicle?.plate || '---',
+        numeroParcela: payment.numeroParcela,
+        dataVencimento: payment.dataVencimento,
+        valor: decimalToNumber(payment.valor),
+        status: payment.status,
+        descricao: payment.descricao,
+      }));
+
+      /*
+       * ============================================================
+       * 7. LOCAÇÕES RECENTES
+       * ============================================================
+       */
+
+      const recentRentalsData = await prisma.rental.findMany({
+        where: {
+          companyId,
+        },
+        include: {
+          client: true,
+          vehicle: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 5,
+      });
+
+      const recentRentals = recentRentalsData.map((rental) => ({
+        id: rental.id,
+        rentalNumber:
+          rental.codigoContrato ||
+          rental.rentalNumber,
+        codigoContrato:
+          rental.codigoContrato ||
+          rental.rentalNumber,
+        clientName:
+          rental.client?.name || 'N/A',
+        vehiclePlate:
+          rental.vehicle?.plate || 'N/A',
+        vehicleModel: rental.vehicle
+          ? `${rental.vehicle.brand} ${rental.vehicle.model}`
+          : 'N/A',
+        startDate: rental.startDate,
+        endDate: rental.endDate,
+        amount: decimalToNumber(
+          rental.valorPeriodo ?? rental.amount,
+        ),
+        billingFrequency:
+          rental.billingFrequency,
+        status: rental.status,
+      }));
+
+      /*
+       * ============================================================
+       * 8. MANUTENÇÕES URGENTES
+       * ============================================================
+       */
+
+      const urgentMaintenancesData =
+        await prisma.maintenance.findMany({
+          where: {
+            companyId,
+            status: {
+              in: [
+                MaintenanceStatus.SCHEDULED,
+                MaintenanceStatus.IN_PROGRESS,
+                MaintenanceStatus.WAITING_PARTS,
+              ],
+            },
+          },
+          include: {
+            vehicle: true,
+          },
+          orderBy: {
+            dataAgendamento: 'asc',
+          },
+          take: 5,
         });
 
-      // Recent rentals with client and vehicle details
-      const recentRentals = companyRentals
-        .slice(-5)
-        .reverse()
-        .map((r) => {
-          const client = companyClients.find((c) => c.id === (r.clienteId || r.clientId));
-          const vehicle = companyVehicles.find((v) => v.id === (r.veiculoId || r.vehicleId));
-          return {
-            id: r.id,
-            rentalNumber: r.codigoContrato || r.rentalNumber,
-            codigoContrato: r.codigoContrato || r.rentalNumber,
-            clientName: client ? client.name : 'N/A',
-            vehiclePlate: vehicle ? vehicle.plate : 'N/A',
-            vehicleModel: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'N/A',
-            startDate: r.dataInicio || r.startDate,
-            endDate: r.dataFimPrevista || r.endDate,
-            amount: r.valorPeriodo || r.amount,
-            billingFrequency: r.tipoCobranca || r.billingFrequency,
-            status: r.status,
-          };
-        });
+      const urgentMaintenances =
+        urgentMaintenancesData.map((maintenance) => ({
+          id: maintenance.id,
+          vehiclePlate:
+            maintenance.vehicle?.plate || 'N/A',
+          vehicleModel: maintenance.vehicle
+            ? `${maintenance.vehicle.brand} ${maintenance.vehicle.model}`
+            : 'N/A',
+          type: maintenance.type,
+          description: maintenance.descricao,
+          scheduledDate: maintenance.dataAgendamento,
+          workshop:
+            maintenance.workshop || 'N/A',
+          cost: decimalToNumber(
+            maintenance.custoTotal,
+          ),
+          status: maintenance.status,
+        }));
 
-      // Urgent Maintenances
-      const urgentMaintenances = companyMaintenances
-        .filter((m) => m.status === 'SCHEDULED' || m.status === 'IN_PROGRESS')
-        .slice(0, 5)
-        .map((m) => {
-          const vehicle = companyVehicles.find((v) => v.id === m.vehicleId);
-          return {
-            id: m.id,
-            vehiclePlate: vehicle ? vehicle.plate : 'N/A',
-            vehicleModel: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'N/A',
-            type: m.type,
-            description: m.description,
-            scheduledDate: m.scheduledDate,
-            workshop: m.workshop,
-            cost: m.cost,
-            status: m.status,
-          };
-        });
+      /*
+       * ============================================================
+       * 9. RESPOSTA
+       * ============================================================
+       */
 
       res.json({
         metrics: {
@@ -166,14 +404,16 @@ export class DashboardController {
           netProfit,
           utilizationRate,
         },
+
         upcomingDuePayments,
         recentRentals,
         urgentMaintenances,
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      next(error);
     }
   }
 }
 
-export const dashboardController = new DashboardController();
+export const dashboardController =
+  new DashboardController();

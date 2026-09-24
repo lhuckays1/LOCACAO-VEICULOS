@@ -16,6 +16,8 @@ import {
   costCenterSchema,
 } from '../schemas/financial.schema.js';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware.js';
+import { prisma } from '../config/prisma.js';
+import { FinancialOrigin, FinancialStatus, FinancialType } from '@prisma/client';
 
 export class FinancialController {
   /**
@@ -64,133 +66,335 @@ export class FinancialController {
     };
   }
 
-  /**
-   * GET /api/financial/dashboard
-   * Consolidated financial KPIs, charts data and upcoming maturities
-   */
-  async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const companyId = req.user!.companyId;
-      db.updateFinancialStatuses();
 
-      const transactions = db.financialTransactions.filter(
-        (t) => (t.tenantId === companyId || t.companyId === companyId) && t.status !== 'CANCELLED'
-      );
+/**
+ * GET /api/financial/dashboard
+ * Consolidated financial KPIs, charts data and upcoming maturities
+ *
+ * Este endpoint usa exclusivamente Prisma/Supabase.
+ */
+async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const companyId = req.user!.companyId;
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      const currentMonthPrefix = todayStr.substring(0, 7); // e.g., '2026-09'
+    const transactions = await prisma.financialTransaction.findMany({
+      where: {
+        companyId,
+        status: {
+          not: FinancialStatus.CANCELLED,
+        },
+      },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
+        costCenter: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            cpfCnpj: true,
+            phone: true,
+          },
+        },
+        vehicle: {
+          select: {
+            id: true,
+            plate: true,
+            brand: true,
+            model: true,
+          },
+        },
+        rental: {
+          select: {
+            id: true,
+            codigoContrato: true,
+            rentalNumber: true,
+          },
+        },
+      },
+      orderBy: {
+        dueDate: 'desc',
+      },
+    });
 
-      // Metrics of current month
-      const currentMonthTx = transactions.filter((t) => t.dueDate.startsWith(currentMonthPrefix));
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const currentMonthPrefix = todayStr.substring(0, 7);
 
-      const totalRevenueRealized = currentMonthTx
-        .filter((t) => t.type === 'INCOME')
-        .reduce((sum, t) => sum + t.paidAmount, 0);
+    const toNumber = (value: unknown): number => Number(value ?? 0);
 
-      const totalRevenuePending = currentMonthTx
-        .filter((t) => t.type === 'INCOME' && (t.status === 'PENDING' || t.status === 'PARTIAL'))
-        .reduce((sum, t) => sum + t.remainingAmount, 0);
+    const toDateString = (value: Date): string =>
+      value.toISOString().split('T')[0];
 
-      const totalRevenueOverdue = transactions
-        .filter((t) => t.type === 'INCOME' && t.status === 'OVERDUE')
-        .reduce((sum, t) => sum + t.remainingAmount, 0);
+    const isCurrentMonth = (date: Date): boolean =>
+      toDateString(date).startsWith(currentMonthPrefix);
 
-      const totalExpensePaid = currentMonthTx
-        .filter((t) => t.type === 'EXPENSE')
-        .reduce((sum, t) => sum + t.paidAmount, 0);
+    const round2 = (value: number): number => Number(value.toFixed(2));
 
-      const totalExpensePending = currentMonthTx
-        .filter((t) => t.type === 'EXPENSE' && (t.status === 'PENDING' || t.status === 'PARTIAL' || t.status === 'OVERDUE'))
-        .reduce((sum, t) => sum + t.remainingAmount, 0);
+    // Métricas do mês atual
+    const currentMonthTx = transactions.filter((t) => isCurrentMonth(t.dueDate));
 
-      const netCashBalance = Number((totalRevenueRealized - totalExpensePaid).toFixed(2));
-      const projectedNetResult = Number(
-        (totalRevenueRealized + totalRevenuePending - (totalExpensePaid + totalExpensePending)).toFixed(2)
-      );
+    const totalRevenueRealized = currentMonthTx
+      .filter((t) => t.type === FinancialType.INCOME)
+      .reduce((sum, t) => sum + toNumber(t.paidAmount), 0);
 
-      // Inadimplência Global
-      const totalOverdueAmount = transactions
-        .filter((t) => t.type === 'INCOME' && (t.status === 'OVERDUE' || (t.dueDate < todayStr && t.status !== 'PAID')))
-        .reduce((sum, t) => sum + t.remainingAmount, 0);
+    const totalRevenuePending = currentMonthTx
+      .filter(
+        (t) =>
+          t.type === FinancialType.INCOME &&
+          (t.status === FinancialStatus.PENDING ||
+            t.status === FinancialStatus.PARTIAL),
+      )
+      .reduce((sum, t) => sum + toNumber(t.remainingAmount), 0);
 
-      const allActiveIncomes = transactions.filter((t) => t.type === 'INCOME');
-      const totalIncomeVolume = allActiveIncomes.reduce((sum, t) => sum + t.netAmount, 0);
-      const defaultRate = totalIncomeVolume > 0
+    const totalRevenueOverdue = transactions
+      .filter(
+        (t) =>
+          t.type === FinancialType.INCOME &&
+          t.status === FinancialStatus.OVERDUE,
+      )
+      .reduce((sum, t) => sum + toNumber(t.remainingAmount), 0);
+
+    const totalExpensePaid = currentMonthTx
+      .filter((t) => t.type === FinancialType.EXPENSE)
+      .reduce((sum, t) => sum + toNumber(t.paidAmount), 0);
+
+    const totalExpensePending = currentMonthTx
+      .filter(
+        (t) =>
+          t.type === FinancialType.EXPENSE &&
+          (t.status === FinancialStatus.PENDING ||
+            t.status === FinancialStatus.PARTIAL ||
+            t.status === FinancialStatus.OVERDUE),
+      )
+      .reduce((sum, t) => sum + toNumber(t.remainingAmount), 0);
+
+    const netCashBalance = round2(totalRevenueRealized - totalExpensePaid);
+
+    const projectedNetResult = round2(
+      totalRevenueRealized +
+        totalRevenuePending -
+        (totalExpensePaid + totalExpensePending),
+    );
+
+    // Inadimplência global
+    const overdueIncomeTransactions = transactions.filter(
+      (t) =>
+        t.type === FinancialType.INCOME &&
+        t.status !== FinancialStatus.PAID &&
+        (t.status === FinancialStatus.OVERDUE ||
+          toDateString(t.dueDate) < todayStr),
+    );
+
+    const totalOverdueAmount = overdueIncomeTransactions.reduce(
+      (sum, t) => sum + toNumber(t.remainingAmount),
+      0,
+    );
+
+    const totalIncomeVolume = transactions
+      .filter((t) => t.type === FinancialType.INCOME)
+      .reduce((sum, t) => sum + toNumber(t.netAmount), 0);
+
+    const defaultRate =
+      totalIncomeVolume > 0
         ? Number(((totalOverdueAmount / totalIncomeVolume) * 100).toFixed(1))
         : 0;
 
-      // Expenses by Category
-      const expenseByCategoryMap: Record<string, { name: string; color: string; amount: number }> = {};
-      const expenseTx = transactions.filter((t) => t.type === 'EXPENSE');
-      for (const t of expenseTx) {
-        const cat = t.categoryId ? db.financialCategories.find((c) => c.id === t.categoryId) : null;
-        const catName = cat ? cat.name : 'DIVERSOS';
-        const catColor = cat?.color || '#94A3B8';
-        if (!expenseByCategoryMap[catName]) {
-          expenseByCategoryMap[catName] = { name: catName, color: catColor, amount: 0 };
-        }
-        expenseByCategoryMap[catName].amount += (t.paidAmount || t.netAmount);
-      }
-      const expensesByCategory = Object.values(expenseByCategoryMap)
-        .map((e) => ({ ...e, amount: Number(e.amount.toFixed(2)) }))
-        .sort((a, b) => b.amount - a.amount);
+    // Despesas por categoria
+    const expenseByCategoryMap: Record<
+      string,
+      { name: string; color: string; amount: number }
+    > = {};
 
-      // Monthly Evolution (Last 6 months)
-      const monthlyEvolution: { month: string; label: string; income: number; expense: number; balance: number }[] = [];
-      const dateCursor = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(dateCursor.getFullYear(), dateCursor.getMonth() - i, 1);
-        const prefix = d.toISOString().substring(0, 7);
-        const monthLabel = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase();
+    for (const t of transactions.filter(
+      (item) => item.type === FinancialType.EXPENSE,
+    )) {
+      const catName = t.category?.name || 'DIVERSOS';
+      const catColor = t.category?.color || '#94A3B8';
 
-        const monthIncome = transactions
-          .filter((t) => t.type === 'INCOME' && t.dueDate.startsWith(prefix))
-          .reduce((sum, t) => sum + t.paidAmount, 0);
-
-        const monthExpense = transactions
-          .filter((t) => t.type === 'EXPENSE' && t.dueDate.startsWith(prefix))
-          .reduce((sum, t) => sum + t.paidAmount, 0);
-
-        monthlyEvolution.push({
-          month: prefix,
-          label: monthLabel,
-          income: Number(monthIncome.toFixed(2)),
-          expense: Number(monthExpense.toFixed(2)),
-          balance: Number((monthIncome - monthExpense).toFixed(2)),
-        });
+      if (!expenseByCategoryMap[catName]) {
+        expenseByCategoryMap[catName] = {
+          name: catName,
+          color: catColor,
+          amount: 0,
+        };
       }
 
-      // Upcoming Maturities (Next 15 days)
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 15);
-      const futureDateStr = futureDate.toISOString().split('T')[0];
-
-      const upcomingTransactions = transactions
-        .filter((t) => t.status !== 'PAID' && t.dueDate >= todayStr && t.dueDate <= futureDateStr)
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-        .map((t) => this.enrichTransaction(t, companyId));
-
-      res.json({
-        summary: {
-          currentMonth: currentMonthPrefix,
-          totalRevenueRealized: Number(totalRevenueRealized.toFixed(2)),
-          totalRevenuePending: Number(totalRevenuePending.toFixed(2)),
-          totalRevenueOverdue: Number(totalRevenueOverdue.toFixed(2)),
-          totalExpensePaid: Number(totalExpensePaid.toFixed(2)),
-          totalExpensePending: Number(totalExpensePending.toFixed(2)),
-          netCashBalance,
-          projectedNetResult,
-          totalOverdueAmount: Number(totalOverdueAmount.toFixed(2)),
-          defaultRate,
-        },
-        monthlyEvolution,
-        expensesByCategory,
-        upcomingTransactions,
-      });
-    } catch (err) {
-      next(err);
+      expenseByCategoryMap[catName].amount +=
+        toNumber(t.paidAmount) || toNumber(t.netAmount);
     }
+
+    const expensesByCategory = Object.values(expenseByCategoryMap)
+      .map((e) => ({ ...e, amount: round2(e.amount) }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // Evolução mensal — últimos 6 meses
+    const monthlyEvolution: {
+      month: string;
+      label: string;
+      income: number;
+      expense: number;
+      balance: number;
+    }[] = [];
+
+    const dateCursor = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(
+        dateCursor.getFullYear(),
+        dateCursor.getMonth() - i,
+        1,
+      );
+
+      const prefix = `${d.getFullYear()}-${String(
+        d.getMonth() + 1,
+      ).padStart(2, '0')}`;
+
+      const monthLabel = d
+        .toLocaleDateString('pt-BR', {
+          month: 'short',
+          year: '2-digit',
+        })
+        .toUpperCase();
+
+      const monthIncome = transactions
+        .filter(
+          (t) =>
+            t.type === FinancialType.INCOME &&
+            toDateString(t.dueDate).startsWith(prefix),
+        )
+        .reduce((sum, t) => sum + toNumber(t.paidAmount), 0);
+
+      const monthExpense = transactions
+        .filter(
+          (t) =>
+            t.type === FinancialType.EXPENSE &&
+            toDateString(t.dueDate).startsWith(prefix),
+        )
+        .reduce((sum, t) => sum + toNumber(t.paidAmount), 0);
+
+      monthlyEvolution.push({
+        month: prefix,
+        label: monthLabel,
+        income: round2(monthIncome),
+        expense: round2(monthExpense),
+        balance: round2(monthIncome - monthExpense),
+      });
+    }
+
+    // Próximos vencimentos — 15 dias
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + 15);
+    const futureDateStr = futureDate.toISOString().split('T')[0];
+
+    const upcomingTransactions = transactions
+      .filter((t) => {
+        const dueDate = toDateString(t.dueDate);
+
+        return (
+          t.status !== FinancialStatus.PAID &&
+          dueDate >= todayStr &&
+          dueDate <= futureDateStr
+        );
+      })
+      .sort((a, b) =>
+        toDateString(a.dueDate).localeCompare(toDateString(b.dueDate)),
+      )
+      .map((t) => {
+        const dueDate = toDateString(t.dueDate);
+        const remainingAmount = toNumber(t.remainingAmount);
+
+        return {
+          id: t.id,
+          companyId: t.companyId,
+          type: t.type,
+          origin: t.origin,
+          description: t.description,
+          categoryId: t.categoryId,
+          costCenterId: t.costCenterId,
+          clientId: t.clientId,
+          vehicleId: t.vehicleId,
+          rentalId: t.rentalId,
+          rentalPaymentId: t.rentalPaymentId,
+          maintenanceId: t.maintenanceId,
+          recurringId: t.recurringId,
+          grossAmount: toNumber(t.grossAmount),
+          discountAmount: toNumber(t.discountAmount),
+          interestAmount: toNumber(t.interestAmount),
+          netAmount: toNumber(t.netAmount),
+          paidAmount: toNumber(t.paidAmount),
+          remainingAmount,
+          competencyDate: t.competencyDate,
+          dueDate: t.dueDate,
+          settlementDate: t.settlementDate,
+          paymentMethod: t.paymentMethod,
+          status: t.status,
+          isRecurring: t.isRecurring,
+          installmentNumber: t.installmentNumber,
+          totalInstallments: t.totalInstallments,
+          receiptUrl: t.receiptUrl,
+          notes: t.notes,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+
+          clientName: t.client?.name || null,
+          clientDocument: t.client?.cpfCnpj || null,
+          clientPhone: t.client?.phone || null,
+
+          vehiclePlate: t.vehicle?.plate || null,
+          vehicleModel: t.vehicle
+            ? `${t.vehicle.brand} ${t.vehicle.model}`
+            : null,
+
+          categoryName: t.category?.name || 'SEM CATEGORIA',
+          categoryColor: t.category?.color || '#64748B',
+
+          costCenterName: t.costCenter?.name || 'GERAL',
+          costCenterCode: t.costCenter?.code || '000',
+
+          contractNumber: t.rental
+            ? t.rental.codigoContrato || t.rental.rentalNumber
+            : null,
+
+          daysOverdue: 0,
+          suggestedFine: 0,
+          suggestedInterest: 0,
+          suggestedTotalToPay: round2(remainingAmount),
+        };
+      });
+
+    res.json({
+      summary: {
+        currentMonth: currentMonthPrefix,
+        totalRevenueRealized: round2(totalRevenueRealized),
+        totalRevenuePending: round2(totalRevenuePending),
+        totalRevenueOverdue: round2(totalRevenueOverdue),
+        totalExpensePaid: round2(totalExpensePaid),
+        totalExpensePending: round2(totalExpensePending),
+        netCashBalance,
+        projectedNetResult,
+        totalOverdueAmount: round2(totalOverdueAmount),
+        defaultRate,
+      },
+      monthlyEvolution,
+      expensesByCategory,
+      upcomingTransactions,
+    });
+  } catch (err) {
+    next(err);
   }
+}
 
   /**
    * GET /api/financial/transactions
@@ -199,7 +403,6 @@ export class FinancialController {
   async listTransactions(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const companyId = req.user!.companyId;
-      db.updateFinancialStatuses();
 
       const {
         type,
@@ -215,72 +418,153 @@ export class FinancialController {
         search,
       } = req.query;
 
-      let result = db.financialTransactions.filter(
-        (t) => t.tenantId === companyId || t.companyId === companyId
-      );
+      const where: any = {
+        companyId,
+      };
 
       if (type && type !== 'ALL') {
-        result = result.filter((t) => t.type === type);
+        where.type = String(type) as FinancialType;
       }
 
       if (status && status !== 'ALL') {
-        result = result.filter((t) => t.status === status);
+        where.status = String(status) as FinancialStatus;
       }
 
       if (origin && origin !== 'ALL') {
-        result = result.filter((t) => t.origin === origin);
+        where.origin = String(origin) as FinancialOrigin;
       }
 
       if (categoryId && categoryId !== 'ALL') {
-        result = result.filter((t) => t.categoryId === categoryId);
+        where.categoryId = String(categoryId);
       }
 
       if (costCenterId && costCenterId !== 'ALL') {
-        result = result.filter((t) => t.costCenterId === costCenterId);
+        where.costCenterId = String(costCenterId);
       }
 
       if (clientId) {
-        result = result.filter((t) => t.clientId === clientId);
+        where.clientId = String(clientId);
       }
 
       if (vehicleId) {
-        result = result.filter((t) => t.vehicleId === vehicleId);
+        where.vehicleId = String(vehicleId);
       }
 
       if (rentalId) {
-        result = result.filter((t) => t.rentalId === rentalId);
+        where.rentalId = String(rentalId);
       }
 
-      if (startDate) {
-        result = result.filter((t) => t.dueDate >= String(startDate));
-      }
+      if (startDate || endDate) {
+        where.dueDate = {};
 
-      if (endDate) {
-        result = result.filter((t) => t.dueDate <= String(endDate));
+        if (startDate) {
+          where.dueDate.gte = new Date(`${String(startDate)}T00:00:00`);
+        }
+
+        if (endDate) {
+          where.dueDate.lte = new Date(`${String(endDate)}T23:59:59.999`);
+        }
       }
 
       if (search) {
-        const q = String(search).trim().toUpperCase();
-        result = result.filter((t) => {
-          const client = t.clientId ? db.clients.find((c) => c.id === t.clientId) : null;
-          const vehicle = t.vehicleId ? db.vehicles.find((v) => v.id === t.vehicleId) : null;
-          return (
-            t.description.toUpperCase().includes(q) ||
-            (client && client.name.toUpperCase().includes(q)) ||
-            (vehicle && vehicle.plate.toUpperCase().includes(q)) ||
-            (t.notes && t.notes.toUpperCase().includes(q))
-          );
-        });
+        const q = String(search).trim();
+
+        if (q) {
+          where.OR = [
+            {
+              description: {
+                contains: q,
+                mode: 'insensitive',
+              },
+            },
+            {
+              notes: {
+                contains: q,
+                mode: 'insensitive',
+              },
+            },
+            {
+              client: {
+                name: {
+                  contains: q,
+                  mode: 'insensitive',
+                },
+              },
+            },
+            {
+              vehicle: {
+                plate: {
+                  contains: q,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          ];
+
+        }
       }
 
-      // Sort by dueDate DESC
-      result.sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+      const transactions = await prisma.financialTransaction.findMany({
+        where,
+        include: {
+          category: true,
+          costCenter: true,
+          client: true,
+          vehicle: true,
+          rental: true,
+        },
+        orderBy: {
+          dueDate: 'desc',
+        },
+      });
 
-      const enriched = result.map((t) => this.enrichTransaction(t, companyId));
+      const data = transactions.map((tx) => ({
+        id: tx.id,
+        tenantId: companyId,
+        companyId: tx.companyId,
+        type: tx.type,
+        origin: tx.origin,
+        description: tx.description,
+        categoryId: tx.categoryId,
+        categoryName: tx.category?.name ?? null,
+        categoryColor: tx.category?.color ?? null,
+        costCenterId: tx.costCenterId,
+        costCenterName: tx.costCenter?.name ?? null,
+        clientId: tx.clientId,
+        clientName: tx.client?.name ?? null,
+        clientPhone: tx.client?.phone ?? null,
+        vehicleId: tx.vehicleId,
+        vehicleName: tx.vehicle
+          ? `${tx.vehicle.brand ?? ''} ${tx.vehicle.model ?? ''}`.trim()
+          : null,
+        vehiclePlate: tx.vehicle?.plate ?? null,
+        rentalId: tx.rentalId,
+        rentalNumber: tx.rental?.rentalNumber ?? tx.rental?.codigoContrato ?? null,
+        rentalPaymentId: tx.rentalPaymentId,
+        recurringId: tx.recurringId,
+        grossAmount: Number(tx.grossAmount),
+        discountAmount: Number(tx.discountAmount),
+        interestAmount: Number(tx.interestAmount),
+        netAmount: Number(tx.netAmount),
+        paidAmount: Number(tx.paidAmount),
+        remainingAmount: Number(tx.remainingAmount),
+        competencyDate: tx.competencyDate,
+        dueDate: tx.dueDate,
+        settlementDate: tx.settlementDate,
+        paymentMethod: tx.paymentMethod,
+        status: tx.status,
+        isRecurring: tx.isRecurring,
+        installmentNumber: tx.installmentNumber,
+        totalInstallments: tx.totalInstallments,
+        receiptUrl: tx.receiptUrl,
+        notes: tx.notes,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
+      }));
 
       res.json({
-        total: enriched.length,
-        data: enriched,
+        total: data.length,
+        data,
       });
     } catch (err) {
       next(err);
@@ -437,9 +721,19 @@ export class FinancialController {
       const companyId = req.user!.companyId;
       const { id } = req.params;
 
-      const tx = db.financialTransactions.find(
-        (t) => t.id === id && (t.tenantId === companyId || t.companyId === companyId)
-      );
+      const tx = await prisma.financialTransaction.findFirst({
+        where: {
+          id,
+          companyId,
+        },
+        include: {
+          category: true,
+          costCenter: true,
+          client: true,
+          vehicle: true,
+          rental: true,
+        },
+      });
 
       if (!tx) {
         res.status(404).json({
@@ -449,22 +743,77 @@ export class FinancialController {
         return;
       }
 
-      const enriched = this.enrichTransaction(tx, companyId);
-      const settlements = db.financialSettlements
-        .filter((s) => s.transactionId === tx.id)
-        .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
-        .map((s) => {
-          const user = s.userId ? db.users.find((u) => u.id === s.userId) : null;
-          return {
-            ...s,
-            userName: user ? user.name : 'SISTEMA',
-          };
-        });
+      const settlements = await prisma.financialSettlement.findMany({
+        where: {
+          transactionId: tx.id,
+        },
+        include: {
+          user: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          paymentDate: 'desc',
+        },
+      });
+
+      const enriched = {
+        id: tx.id,
+        tenantId: companyId,
+        companyId: tx.companyId,
+        type: tx.type,
+        origin: tx.origin,
+        description: tx.description,
+        categoryId: tx.categoryId,
+        categoryName: tx.category?.name ?? null,
+        categoryColor: tx.category?.color ?? null,
+        costCenterId: tx.costCenterId,
+        costCenterName: tx.costCenter?.name ?? null,
+        clientId: tx.clientId,
+        clientName: tx.client?.name ?? null,
+        clientPhone: tx.client?.phone ?? null,
+        vehicleId: tx.vehicleId,
+        vehicleName: tx.vehicle
+          ? `${tx.vehicle.brand ?? ''} ${tx.vehicle.model ?? ''}`.trim()
+          : null,
+        vehiclePlate: tx.vehicle?.plate ?? null,
+        rentalId: tx.rentalId,
+        rentalNumber: tx.rental?.rentalNumber ?? tx.rental?.codigoContrato ?? null,
+        rentalPaymentId: tx.rentalPaymentId,
+        recurringId: tx.recurringId,
+        grossAmount: Number(tx.grossAmount),
+        discountAmount: Number(tx.discountAmount),
+        interestAmount: Number(tx.interestAmount),
+        netAmount: Number(tx.netAmount),
+        paidAmount: Number(tx.paidAmount),
+        remainingAmount: Number(tx.remainingAmount),
+        competencyDate: tx.competencyDate,
+        dueDate: tx.dueDate,
+        settlementDate: tx.settlementDate,
+        paymentMethod: tx.paymentMethod,
+        status: tx.status,
+        isRecurring: tx.isRecurring,
+        installmentNumber: tx.installmentNumber,
+        totalInstallments: tx.totalInstallments,
+        receiptUrl: tx.receiptUrl,
+        notes: tx.notes,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
+      };
 
       res.json({
         data: {
           ...enriched,
-          settlements,
+          settlements: settlements.map((settlement) => ({
+            ...settlement,
+            amount: Number(settlement.amount),
+            interest: Number(settlement.interest),
+            fine: Number(settlement.fine),
+            discount: Number(settlement.discount),
+            userName: settlement.user?.name ?? 'SISTEMA',
+          })),
         },
       });
     } catch (err) {

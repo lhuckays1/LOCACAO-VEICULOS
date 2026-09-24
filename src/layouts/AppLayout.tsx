@@ -15,14 +15,10 @@ import {
   LogOut,
   Menu,
   X,
-  Plus,
   Building2,
   Bell,
   Search,
 } from 'lucide-react';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { ChangePasswordModal } from '../components/auth/ChangePasswordModal';
 
 export type NavigationTab =
   | 'DASHBOARD'
@@ -56,7 +52,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const { user, company, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const navItems = [
     { id: 'DASHBOARD' as NavigationTab, label: 'DASHBOARD', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -157,50 +152,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           })}
         </nav>
 
-        {/* Bottom User Info & Actions */}
-          <div className="p-4 border-t border-slate-800 bg-slate-950/40">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1 mr-2">
-                <p className="text-xs font-bold text-white truncate">
-                  {user?.name || 'USUÁRIO'}
-                </p>
-
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                    {user?.role || 'OPERATOR'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setIsChangePasswordOpen(true)}
-                  title="Alterar senha"
-                  className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors"
-                >
-                  <KeyRound className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={logout}
-                  title="Sair do Sistema"
-                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
+        {/* Bottom User Info & Logout */}
+        <div className="p-4 border-t border-slate-800 bg-slate-950/40">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 flex-1 mr-2">
+              <p className="text-xs font-bold text-white truncate">{user?.name || 'USUÁRIO'}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                  {user?.role || 'OPERATOR'}
+                </span>
               </div>
             </div>
+            <button
+              onClick={logout}
+              title="Sair do Sistema"
+              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
+        </div>
       </aside>
-
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-      />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -215,52 +188,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 {currentTab}
               </h2>
             </div>
-            <Badge variant="success" className="text-[10px] uppercase font-bold">
-              Base Operacional Ativa
-            </Badge>
           </div>
 
-          {/* Right Action Buttons */}
+          {/* User Info */}
           <div className="flex items-center gap-3">
-            {onOpenNewClient && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenNewClient}
-                className="gap-1.5 text-xs font-bold text-slate-700"
-              >
-                <Plus className="w-3.5 h-3.5 text-slate-500" />
-                + Cliente
-              </Button>
-            )}
-
-            {onOpenNewVehicle && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenNewVehicle}
-                className="gap-1.5 text-xs font-bold text-slate-700"
-              >
-                <Car className="w-3.5 h-3.5 text-slate-500" />
-                + Veículo
-              </Button>
-            )}
-
-            {onOpenNewRental && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={onOpenNewRental}
-                className="gap-1.5 text-xs font-bold"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Nova Locação
-              </Button>
-            )}
-
             <div className="h-6 w-px bg-slate-200 mx-1" />
 
-            {/* User Pill */}
             <div className="flex items-center gap-2.5 pl-1">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
                 {user?.name ? user.name.charAt(0) : 'U'}
