@@ -831,7 +831,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                   <DollarSign className="w-4 h-4 text-emerald-700" />
                   Balanço Financeiro da Locação
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase font-semibold">Valor do Período</span>
                     <div className="font-black text-slate-900 text-sm mt-0.5">
@@ -840,7 +840,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                     <span className="text-[10px] text-slate-400">{rental.quantidadePeriodos || 1} período(s)</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Previsto</span>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Contratado</span>
                     <div className="font-black text-slate-900 text-sm mt-0.5">
                       {maskCurrency(rental.valorTotalPrevisto ?? (rental.valorPeriodo ?? rental.amount) * (rental.quantidadePeriodos || 1))}
                     </div>
@@ -855,6 +855,12 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                     <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Pendente</span>
                     <div className="font-black text-amber-700 text-sm mt-0.5">
                       {maskCurrency(rental.financialSummary?.totalPending || 0)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Cancelado</span>
+                    <div className="font-black text-slate-500 text-sm mt-0.5">
+                      {maskCurrency(rental.financialSummary?.totalCanceled || 0)}
                     </div>
                   </div>
                 </div>

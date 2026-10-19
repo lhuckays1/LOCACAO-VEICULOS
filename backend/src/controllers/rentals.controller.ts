@@ -237,12 +237,29 @@ export class RentalsController {
       0
     );
 
+    const totalCanceled = payments
+      .filter((payment: any) => payment.status === 'CANCELADO')
+      .reduce(
+        (sum: number, payment: any) =>
+          sum + Math.max(0, Number(payment.valor || 0)),
+        0
+      );
     const totalPending = payments
       .filter(
         (payment: any) =>
-          payment.status === 'PENDENTE' || payment.status === 'PARCIAL'
+          payment.status === 'PENDENTE' ||
+          payment.status === 'PARCIAL' ||
+          payment.status === 'ATRASADO'
       )
-      .reduce((sum: number, payment: any) => sum + Number(payment.saldo ?? payment.valor ?? 0), 0);
+      .reduce(
+        (sum: number, payment: any) =>
+          sum +
+          Math.max(
+            0,
+            Number(payment.saldo ?? payment.valor ?? 0)
+          ),
+        0
+      );
 
     const totalOverdue = payments
       .filter((payment: any) => payment.status === 'ATRASADO')
@@ -370,6 +387,7 @@ export class RentalsController {
       financialSummary: {
         totalPaid,
         totalPending,
+        totalCanceled,
         totalOverdue,
         paymentsCount: payments.length,
         paidCount: payments.filter((p: any) => p.status === 'PAGO').length,
@@ -1720,6 +1738,92 @@ export class RentalsController {
             },
           });
 
+          // Cancela somente parcelas futuras sem recebimentos registrados.
+          // Parcelas pagas, parciais e vencidas antes do encerramento são preservadas.
+          const endDateLocal = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(now);
+
+          const futurePayments = await tx.rentalPayment.findMany({
+            where: {
+              rentalId: rental.id,
+              tenantId: companyId,
+              dataVencimento: {
+                gt: endDateLocal,
+              },
+              status: {
+                in: ['PENDENTE', 'ATRASADO'],
+              },
+            },
+            include: {
+              financialTransaction: {
+                include: {
+                  settlements: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          const cancellablePayments = futurePayments.filter((payment) => {
+            const transaction = payment.financialTransaction;
+
+            return (
+              transaction !== null &&
+              Number(transaction.paidAmount) === 0 &&
+              transaction.settlements.length === 0
+            );
+          });
+
+          const cancellablePaymentIds = cancellablePayments.map(
+            (payment) => payment.id
+          );
+
+          const cancellableTransactionIds = cancellablePayments
+            .map((payment) => payment.financialTransaction?.id)
+            .filter((transactionId): transactionId is string => Boolean(transactionId));
+
+          if (cancellablePaymentIds.length > 0) {
+            await tx.rentalPayment.updateMany({
+              where: {
+                id: {
+                  in: cancellablePaymentIds,
+                },
+                rentalId: rental.id,
+                tenantId: companyId,
+              },
+              data: {
+                status: 'CANCELADO',
+                updatedAt: now,
+              },
+            });
+          }
+
+          if (cancellableTransactionIds.length > 0) {
+            await tx.financialTransaction.updateMany({
+              where: {
+                id: {
+                  in: cancellableTransactionIds,
+                },
+                companyId,
+                paidAmount: 0,
+                status: {
+                  in: ['PENDING', 'OVERDUE'],
+                },
+              },
+              data: {
+                status: 'CANCELLED',
+                updatedAt: now,
+              },
+            });
+          }
+
           const mileageData: Prisma.VehicleMileageCreateInput = {
             vehicle: {
               connect: {
@@ -2521,4 +2625,6 @@ export class RentalsController {
 }
 
 export const rentalsController = new RentalsController();
+
+
 

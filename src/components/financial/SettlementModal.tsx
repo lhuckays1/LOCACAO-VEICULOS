@@ -100,6 +100,18 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     setAmount(Number(transaction.remainingAmount || transaction.netAmount || 0));
   };
 
+  const financialStatusLabel = (status?: string): string => {
+    const labels: Record<string, string> = {
+      PENDING: 'PENDENTE',
+      PAID: 'PAGO',
+      PARTIAL: 'PARCIAL',
+      OVERDUE: 'EM ATRASO',
+      CANCELLED: 'CANCELADO',
+    };
+
+    return labels[status || ''] || status || 'NÃO INFORMADO';
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -128,7 +140,9 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 </p>
               )}
             </div>
-            <Badge variant={transaction.status}>{transaction.status}</Badge>
+            <Badge variant={transaction.status}>
+              {financialStatusLabel(transaction.status)}
+            </Badge>
           </div>
 
           <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/80 text-xs">

@@ -84,7 +84,15 @@ export const RentalsPage: React.FC<RentalsPageProps> = ({
         startDate: startDateFilter,
         endDate: endDateFilter,
       });
-      setRentals(res.data);
+setRentals(res.data);
+console.table(
+  res.data.map((r) => ({
+    contrato: r.codigoContrato,
+    status: r.status,
+    inicio: r.dataInicio,
+    fim: r.dataFim,
+  }))
+);
     } catch (err: any) {
       toastError('Erro ao carregar locações', err.message);
     } finally {
@@ -180,14 +188,26 @@ export const RentalsPage: React.FC<RentalsPageProps> = ({
   };
 
   // Metrics summary calculated from current list
-  const activeCount = rentals.filter((r) => r.status === 'ATIVA' || r.status === 'ACTIVE').length;
+  const activeCount = rentals.filter(
+  (r) =>
+    ['ATIVA', 'ACTIVE', 'ATRASADA', 'OVERDUE'].includes(
+      String(r.status ?? '').toUpperCase()
+    )
+).length;
   const overdueCount = rentals.filter((r) => r.status === 'ATRASADA' || r.status === 'OVERDUE').length;
+  const getExpectedAmount = (r: (typeof rentals)[number]) => {
+  const totalPaid = Number(r.financialSummary?.totalPaid ?? 0);
+  const totalPending = Number(r.financialSummary?.totalPending ?? 0);
+
+  return totalPaid + totalPending;
+};
+
   const totalAmount = rentals.reduce(
-    (sum, r) => sum + (r.valorTotalPrevisto || (r.valorPeriodo || r.amount || 0) * (r.quantidadePeriodos || 1)),
+    (sum, r) => sum + getExpectedAmount(r),
     0
   );
   const totalPaid = rentals.reduce(
-    (sum, r) => sum + (r.financialSummary?.totalPaid || 0),
+    (sum, r) => sum + Number(r.financialSummary?.totalPaid ?? 0),
     0
   );
 
@@ -481,7 +501,7 @@ export const RentalsPage: React.FC<RentalsPageProps> = ({
                             {r.tipoCobranca || r.billingFrequency} (Venc. Dia {r.diaVencimento || r.dueDay || 5})
                           </div>
                           <div className="text-[10px] text-emerald-700 font-bold">
-                            Total: {maskCurrency(r.valorTotalPrevisto ?? (r.valorPeriodo ?? r.amount) * (r.quantidadePeriodos || 1))}
+                            Total: {maskCurrency(getExpectedAmount(r))}
                           </div>
                         </td>
 

@@ -282,7 +282,7 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
             t.type === FinancialType.EXPENSE &&
             toDateString(t.dueDate).startsWith(prefix),
         )
-        .reduce((sum, t) => sum + toNumber(t.paidAmount), 0);
+        .reduce((sum, t) => sum + toNumber(t.netAmount), 0);
 
       monthlyEvolution.push({
         month: prefix,
@@ -575,74 +575,282 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
    * GET /api/financial/receivables
    * Shortcut for accounts receivable (Contas a Receber)
    */
+    /**
+   * GET /api/financial/receivables
+   * Contas a Receber usando Prisma/Supabase
+   */
   async getReceivables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const companyId = req.user!.companyId;
-      db.updateFinancialStatuses();
+      try {
+        const companyId = req.user!.companyId;
 
-      const { status, clientId, vehicleId, startDate, endDate, search } = req.query;
+        const {
+          status,
+          clientId,
+          vehicleId,
+          startDate,
+          endDate,
+          search,
+        } = req.query;
 
-      let result = db.financialTransactions.filter(
-        (t) => (t.tenantId === companyId || t.companyId === companyId) && t.type === 'INCOME'
-      );
+        const where: any = {
+          companyId,
+          type: FinancialType.INCOME,
+        };
 
-      if (status && status !== 'ALL') {
-        result = result.filter((t) => t.status === status);
-      }
-      if (clientId) {
-        result = result.filter((t) => t.clientId === clientId);
-      }
-      if (vehicleId) {
-        result = result.filter((t) => t.vehicleId === vehicleId);
-      }
-      if (startDate) {
-        result = result.filter((t) => t.dueDate >= String(startDate));
-      }
-      if (endDate) {
-        result = result.filter((t) => t.dueDate <= String(endDate));
-      }
-      if (search) {
-        const q = String(search).trim().toUpperCase();
-        result = result.filter((t) => {
-          const client = t.clientId ? db.clients.find((c) => c.id === t.clientId) : null;
-          const vehicle = t.vehicleId ? db.vehicles.find((v) => v.id === t.vehicleId) : null;
-          return (
-            t.description.toUpperCase().includes(q) ||
-            (client && client.name.toUpperCase().includes(q)) ||
-            (vehicle && vehicle.plate.toUpperCase().includes(q))
-          );
+        // Filtro por status
+        if (status && status !== 'ALL') {
+          where.status = String(status) as FinancialStatus;
+        }
+
+        // Filtro por cliente
+        if (clientId) {
+          where.clientId = String(clientId);
+        }
+
+        // Filtro por veículo
+        if (vehicleId) {
+          where.vehicleId = String(vehicleId);
+        }
+
+        // Filtro por período
+        if (startDate) {
+          where.dueDate = {
+            ...(where.dueDate || {}),
+            gte: new Date(`${String(startDate)}T00:00:00.000Z`),
+          };
+        }
+
+        if (endDate) {
+          where.dueDate = {
+            ...(where.dueDate || {}),
+            lte: new Date(`${String(endDate)}T23:59:59.999Z`),
+          };
+        }
+
+        // Pesquisa por descrição, cliente, veículo ou contrato
+        if (search) {
+          const q = String(search).trim();
+
+          if (q) {
+            where.OR = [
+              {
+                description: {
+                  contains: q,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                client: {
+                  is: {
+                    name: {
+                      contains: q,
+                      mode: 'insensitive',
+                    },
+                  },
+                },
+              },
+              {
+                vehicle: {
+                  is: {
+                    plate: {
+                      contains: q,
+                      mode: 'insensitive',
+                    },
+                  },
+                },
+              },
+              {
+                rental: {
+                  is: {
+                    OR: [
+                      {
+                        codigoContrato: {
+                          contains: q,
+                          mode: 'insensitive',
+                        },
+                      },
+                      {
+                        rentalNumber: {
+                          contains: q,
+                          mode: 'insensitive',
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ];
+          }
+        }
+
+        const transactions = await prisma.financialTransaction.findMany({
+          where,
+          include: {
+            category: true,
+            costCenter: true,
+            client: true,
+            vehicle: true,
+            rental: true,
+          },
+          orderBy: {
+            dueDate: 'asc',
+          },
         });
+
+        const data = transactions.map((tx) => {
+          const netAmount = Number(tx.netAmount);
+          const paidAmount = Number(tx.paidAmount);
+          const remainingAmount = Number(tx.remainingAmount);
+
+          const dueDate = tx.dueDate.toISOString().split('T')[0];
+          const todayStr = new Date().toISOString().split('T')[0];
+
+          let daysOverdue = 0;
+
+          if (
+            tx.status !== FinancialStatus.PAID &&
+            tx.status !== FinancialStatus.CANCELLED &&
+            dueDate < todayStr
+          ) {
+            const dueTime = new Date(`${dueDate}T00:00:00`).getTime();
+            const todayTime = new Date(`${todayStr}T00:00:00`).getTime();
+
+            daysOverdue = Math.max(
+              0,
+              Math.floor(
+                (todayTime - dueTime) / (1000 * 60 * 60 * 24)
+              )
+            );
+          }
+
+          let suggestedFine = 0;
+          let suggestedInterest = 0;
+
+          if (daysOverdue > 0 && remainingAmount > 0) {
+            suggestedFine = Number(
+              (remainingAmount * 0.02).toFixed(2)
+            );
+
+            suggestedInterest = Number(
+              ((remainingAmount * 0.01 * daysOverdue) / 30).toFixed(2)
+            );
+          }
+
+          return {
+            id: tx.id,
+            companyId: tx.companyId,
+
+            type: tx.type,
+            origin: tx.origin,
+
+            description: tx.description,
+
+            categoryId: tx.categoryId,
+            categoryName: tx.category?.name || 'SEM CATEGORIA',
+            categoryColor: tx.category?.color || '#64748B',
+
+            costCenterId: tx.costCenterId,
+            costCenterName: tx.costCenter?.name || 'GERAL',
+            costCenterCode: tx.costCenter?.code || '000',
+
+            clientId: tx.clientId,
+            clientName: tx.client?.name || null,
+            clientDocument: tx.client?.cpfCnpj || null,
+            clientPhone: tx.client?.phone || null,
+
+            vehicleId: tx.vehicleId,
+            vehiclePlate: tx.vehicle?.plate || null,
+            vehicleModel: tx.vehicle
+              ? `${tx.vehicle.brand} ${tx.vehicle.model}`
+              : null,
+
+            rentalId: tx.rentalId,
+            contractNumber: tx.rental
+              ? (tx.rental.codigoContrato || tx.rental.rentalNumber)
+              : null,
+
+            grossAmount: Number(tx.grossAmount),
+            discountAmount: Number(tx.discountAmount),
+            interestAmount: Number(tx.interestAmount),
+
+            netAmount,
+            paidAmount,
+            remainingAmount,
+
+            dueDate,
+            competencyDate: tx.competencyDate.toISOString(),
+            settlementDate: tx.settlementDate
+              ? tx.settlementDate.toISOString()
+              : null,
+
+            paymentMethod: tx.paymentMethod,
+            status: tx.status,
+
+            installmentNumber: tx.installmentNumber,
+            totalInstallments: tx.totalInstallments,
+
+            notes: tx.notes,
+
+            isRecurring: tx.isRecurring,
+
+            daysOverdue,
+            suggestedFine,
+            suggestedInterest,
+            suggestedTotalToPay: Number(
+              (
+                remainingAmount +
+                suggestedFine +
+                suggestedInterest
+              ).toFixed(2)
+            ),
+
+            createdAt: tx.createdAt.toISOString(),
+            updatedAt: tx.updatedAt.toISOString(),
+          };
+        });
+
+        const totalPending = data
+          .filter(
+            (t) =>
+              t.status === FinancialStatus.PENDING ||
+              t.status === FinancialStatus.PARTIAL
+          )
+          .reduce(
+            (sum, t) => sum + t.remainingAmount,
+            0
+          );
+
+        const totalOverdue = data
+          .filter(
+            (t) => t.status === FinancialStatus.OVERDUE
+          )
+          .reduce(
+            (sum, t) => sum + t.remainingAmount,
+            0
+          );
+
+        const totalReceived = data
+          .filter(
+            (t) => t.status === FinancialStatus.PAID
+          )
+          .reduce(
+            (sum, t) => sum + t.paidAmount,
+            0
+          );
+
+        res.json({
+          metrics: {
+            totalPending: Number(totalPending.toFixed(2)),
+            totalOverdue: Number(totalOverdue.toFixed(2)),
+            totalReceived: Number(totalReceived.toFixed(2)),
+            count: data.length,
+          },
+          data,
+        });
+      } catch (err) {
+        next(err);
       }
-
-      result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-
-      const totalPending = result
-        .filter((t) => t.status === 'PENDING' || t.status === 'PARTIAL')
-        .reduce((sum, t) => sum + t.remainingAmount, 0);
-
-      const totalOverdue = result
-        .filter((t) => t.status === 'OVERDUE')
-        .reduce((sum, t) => sum + t.remainingAmount, 0);
-
-      const totalReceived = result
-        .filter((t) => t.status === 'PAID')
-        .reduce((sum, t) => sum + t.paidAmount, 0);
-
-      const enriched = result.map((t) => this.enrichTransaction(t, companyId));
-
-      res.json({
-        metrics: {
-          totalPending: Number(totalPending.toFixed(2)),
-          totalOverdue: Number(totalOverdue.toFixed(2)),
-          totalReceived: Number(totalReceived.toFixed(2)),
-          count: enriched.length,
-        },
-        data: enriched,
-      });
-    } catch (err) {
-      next(err);
     }
-  }
 
   /**
    * GET /api/financial/payables
