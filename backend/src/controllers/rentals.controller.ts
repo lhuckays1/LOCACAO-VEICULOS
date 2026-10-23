@@ -1,3 +1,4 @@
+import { HttpError } from '../utils/api-error.js';
 ﻿import { Response, NextFunction } from 'express';
 import { Prisma, PaymentMethod, RentalStatus } from '@prisma/client';
 
@@ -892,6 +893,7 @@ export class RentalsController {
 
       const result = await prisma.$transaction(
         async (tx) => {
+        await tx.$queryRaw`SELECT id FROM vehicles WHERE id = ${vehicleId} AND "companyId" = ${companyId} FOR UPDATE`;
         const client = await tx.client.findFirst({
           where: {
             id: clientId,
@@ -2332,6 +2334,11 @@ export class RentalsController {
 
       const updated = await prisma.$transaction(
         async (tx) => {
+        await tx.$queryRaw`SELECT id FROM financial_transactions WHERE id = ${transaction.id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const currentFinancial = await tx.financialTransaction.findFirst({ where: { id: transaction.id, companyId } });
+        if (!currentFinancial || currentFinancial.updatedAt.getTime() !== transaction.updatedAt.getTime()) {
+          throw new HttpError(409, 'O saldo foi alterado por outra operação. Atualize a parcela antes de receber.');
+        }
         const updatedPayment = await tx.rentalPayment.update({
           where: {
             id: payment.id,
@@ -2366,8 +2373,9 @@ export class RentalsController {
             data: {
               paidAmount: paidAfter,
               remainingAmount: newRemaining,
+              netAmount: Math.round((paidAfter + newRemaining) * 100) / 100,
               interestAmount: Math.round(
-                (Number(transaction.interestAmount || 0) + interest) * 100
+                (Number(transaction.interestAmount || 0) + interest + fine) * 100
               ) / 100,
               settlementDate: isFullyPaid
                 ? paymentDateObj

@@ -79,6 +79,7 @@ model User {
   updatedAt            DateTime              @updatedAt
   auditLogs            AuditLog[]
   financialSettlements FinancialSettlement[]
+  sessions             AuthSession[]
   permissions          UserPermission[]
   company              Company?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -936,4 +937,18 @@ enum Permission {
 enum InterestType {
   DAILY
   MONTHLY
+}
+
+model AuthSession {
+  id             String   @id
+  userId         String
+  refreshHash    String   @unique
+  credentialHash String
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
 }

@@ -1,13 +1,24 @@
+import { prisma } from '../config/prisma.js';
+import { AuthenticatedRequest } from '../middlewares/auth.middleware.js';
 import { Router } from 'express';
 import { financialController } from '../controllers/financial.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { authMiddleware, requireCompany } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/role.middleware.js';
 import { uppercaseMiddleware } from '../middlewares/uppercase.middleware.js';
 
 const router = Router();
 
 // Enforce authentication for all financial endpoints
-router.use(authMiddleware);
+router.use(authMiddleware, requireCompany);
+router.use(async (req: AuthenticatedRequest, _res, next) => {
+  try {
+    const companyId = req.user!.companyId!;
+    const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    await prisma.financialTransaction.updateMany({ where: { companyId, status: 'PENDING', dueDate: { lt: today }, remainingAmount: { gt: 0 } }, data: { status: 'OVERDUE' } });
+    await prisma.financialTransaction.updateMany({ where: { companyId, status: 'OVERDUE', paidAmount: 0, dueDate: { gte: today } }, data: { status: 'PENDING' } });
+    next();
+  } catch (err) { next(err); }
+});
 
 // Dashboard & KPIs
 router.get('/dashboard', (req, res, next) => financialController.getDashboard(req, res, next));

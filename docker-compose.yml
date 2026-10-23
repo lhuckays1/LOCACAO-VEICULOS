@@ -1,33 +1,25 @@
-version: '3.8'
-
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: frota_crm_app
+    build: .
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/frota_crm?schema=public
-      - JWT_SECRET=sua_chave_secreta_super_segura_jwt_frota_crm_2024
-      - JWT_REFRESH_SECRET=sua_chave_secreta_refresh_jwt_frota_crm_2024
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD}@postgres:5432/frota_crm?schema=public
+      DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD}@postgres:5432/frota_crm?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Defina JWT_REFRESH_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
-    restart: always
-
+    restart: unless-stopped
   postgres:
     image: postgres:16-alpine
-    container_name: frota_crm_postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD}
       POSTGRES_DB: frota_crm
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +27,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: always
-
+    restart: unless-stopped
 volumes:
   postgres_data:

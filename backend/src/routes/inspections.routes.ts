@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { inspectionsController } from '../controllers/inspections.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { authMiddleware, requireCompany } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/role.middleware.js';
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireCompany);
 
 router.get('/', (req, res, next) => inspectionsController.list(req, res, next));
 router.get('/:id', (req, res, next) => inspectionsController.getById(req, res, next));

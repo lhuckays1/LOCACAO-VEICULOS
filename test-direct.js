@@ -17,9 +17,6 @@ console.log(
 const client = new Client({
   connectionString: process.env.DIRECT_URL,
   connectionTimeoutMillis: 15000,
-  ssl: {
-    rejectUnauthorized: false,
-  },
 });
 
 try {

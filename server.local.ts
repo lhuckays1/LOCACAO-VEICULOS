@@ -16,7 +16,7 @@ async function startLocalServer() {
 
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), 'dist', 'public');
 
     app.use(express.static(distPath));
 

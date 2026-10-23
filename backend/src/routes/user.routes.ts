@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { hashPassword } from '../config/jwt.js';
 import { prisma } from '../config/prisma.js';
-import { authMiddleware, AuthenticatedRequest } from '../middlewares/auth.middleware.js';
+import { authMiddleware, requireCompany, AuthenticatedRequest } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/role.middleware.js';
 import { Permission } from '@prisma/client';
 
@@ -73,6 +73,7 @@ function sanitizeUser(user: any) {
 router.get(
   '/',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -125,6 +126,7 @@ router.get(
 router.post(
   '/',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -331,6 +333,7 @@ router.post(
 router.put(
   '/:id',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -537,6 +540,7 @@ router.put(
 router.patch(
   '/:id/toggle-status',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -611,6 +615,7 @@ router.patch(
 router.patch(
   '/:id/reset-password',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -684,6 +689,7 @@ router.patch(
 router.delete(
   '/:id',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -755,6 +761,7 @@ router.delete(
 router.get(
   '/:id/permissions',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {
@@ -817,6 +824,7 @@ router.get(
 router.put(
   '/:id/permissions',
   authMiddleware,
+  requireCompany,
   authorize(['ADMIN']),
   async (req: AuthenticatedRequest, res, next) => {
     try {

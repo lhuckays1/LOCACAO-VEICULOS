@@ -33,6 +33,7 @@ app.use('/api', apiRouter);
  * ============================================================
  */
 
+app.use('/api', (_req, res) => { res.status(404).json({ error: 'NOT_FOUND', message: 'Rota não encontrada.' }); });
 app.use('/api', errorHandler);
 
 export default app;

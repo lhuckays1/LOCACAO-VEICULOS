@@ -16,6 +16,26 @@ export class ApiError extends Error {
   }
 }
 
+let refreshInFlight: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+async function refreshSession() {
+  if (!refreshInFlight) {
+    const previous = localStorage.getItem('frota_refresh_token');
+    refreshInFlight = (async () => {
+      if (!previous) throw new ApiError('Sessão expirada.', 401);
+      const response = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: previous }),
+      });
+      if (!response.ok) throw new ApiError('Não foi possível renovar a sessão.', response.status);
+      const data = await response.json();
+      if (localStorage.getItem('frota_refresh_token') !== previous) throw new ApiError('Sessão encerrada.', 401);
+      localStorage.setItem('frota_access_token', data.accessToken);
+      localStorage.setItem('frota_refresh_token', data.refreshToken);
+      return data;
+    })().finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('frota_access_token');
   const headers = new Headers(options.headers || {});
@@ -33,40 +53,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   });
 
-  // Handle Token Refresh on 401 Unauthorized
-  if (response.status === 401 && endpoint !== '/auth/login' && endpoint !== '/auth/refresh') {
-    const refreshToken = localStorage.getItem('frota_refresh_token');
-    if (refreshToken) {
-      try {
-        const refreshResponse = await fetch(`${BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        if (refreshResponse.ok) {
-          const refreshData = await refreshResponse.json();
-          localStorage.setItem('frota_access_token', refreshData.accessToken);
-          localStorage.setItem('frota_refresh_token', refreshData.refreshToken);
-
-          // Retry original request with new token
-          headers.set('Authorization', `Bearer ${refreshData.accessToken}`);
-          response = await fetch(`${BASE_URL}${endpoint}`, {
-            ...options,
-            headers,
-          });
-        } else {
-          // Token expired or invalid
-          localStorage.removeItem('frota_access_token');
-          localStorage.removeItem('frota_refresh_token');
-          localStorage.removeItem('frota_user');
-          window.location.href = '/login';
-        }
-      } catch {
+  if (response.status === 401 && !['/auth/login', '/auth/refresh', '/auth/logout', '/auth/register'].includes(endpoint)) {
+    try {
+      const data = await refreshSession();
+      headers.set('Authorization', `Bearer ${data.accessToken}`);
+      response = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+    } catch (err) {
+      if (err instanceof ApiError && [401, 403].includes(err.statusCode)) {
         localStorage.removeItem('frota_access_token');
         localStorage.removeItem('frota_refresh_token');
-        localStorage.removeItem('frota_user');
+        window.dispatchEvent(new Event('frota-session-ended'));
       }
+      throw err;
     }
   }
 
@@ -113,14 +111,19 @@ export const api = {
       currentPassword: string;
       newPassword: string;
     }) =>
-      request<{ message: string }>('/auth/change-password', {
+      request<{ message: string; accessToken: string; refreshToken: string }>('/auth/change-password', {
         method: 'POST',
         body: JSON.stringify(data),
+      }).then(result => {
+        localStorage.setItem('frota_access_token', result.accessToken);
+        localStorage.setItem('frota_refresh_token', result.refreshToken);
+        return result;
       }),
       
     logout: () =>
       request<any>('/auth/logout', {
         method: 'POST',
+        body: JSON.stringify({ refreshToken: localStorage.getItem('frota_refresh_token') }),
       }),
   },
 

@@ -1,3 +1,5 @@
+import { HttpError } from '../utils/api-error.js';
+import { Prisma } from '@prisma/client';
 import { Response, NextFunction } from 'express';
 import {
   MaintenanceStatus,
@@ -34,7 +36,7 @@ const parseDateValue = (value: string | Date | null | undefined): Date | null =>
 const normalizeText = (value: unknown): string =>
   String(value ?? '').trim().toUpperCase();
 
-const serializeMaintenance = (m: MaintenanceWithRelations) => ({
+export const serializeMaintenance = (m: MaintenanceWithRelations) => ({
   id: m.id,
   companyId: m.companyId,
   tenantId: m.tenantId,
@@ -119,10 +121,10 @@ export class PrismaMaintenanceController {
     });
   }
 
-  private async generateCode(companyId: string): Promise<string> {
+  private async generateCode(companyId: string, tx: Prisma.TransactionClient): Promise<string> {
     const year = new Date().getFullYear();
 
-    const last = await prisma.maintenance.findFirst({
+    const last = await tx.maintenance.findFirst({
       where: {
         companyId,
         codigo: {
@@ -130,7 +132,7 @@ export class PrismaMaintenanceController {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        codigo: 'desc',
       },
       select: {
         codigo: true,
@@ -474,6 +476,15 @@ export class PrismaMaintenanceController {
       }
 
       const updated = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM maintenances WHERE id = ${maintenance.id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const currentOrder = await tx.maintenance.findFirst({ where: { id: maintenance.id, companyId } });
+        if (!currentOrder || currentOrder.updatedAt.getTime() !== maintenance.updatedAt.getTime()) throw new HttpError(409, 'Ordem alterada por outra operação. Atualize os dados.');
+        await tx.$queryRaw`SELECT id FROM vehicles WHERE id = ${maintenance.vehicleId} AND "companyId" = ${companyId} FOR UPDATE`;
+
+
+        const currentVehicle = await tx.vehicle.findFirstOrThrow({ where: { id: maintenance.vehicleId, companyId } });
+        const active = await tx.rental.count({ where: { companyId, vehicleId: maintenance.vehicleId, status: { in: ['ACTIVE', 'SCHEDULED', 'OVERDUE', 'BLOCKED'] } } });
+        if (active || currentVehicle.status !== 'AVAILABLE') throw new HttpError(409, 'Veículo indisponível para manutenção.');
         await tx.maintenance.update({
           where: { id: maintenance.id },
           data: {
@@ -622,6 +633,14 @@ export class PrismaMaintenanceController {
 
       await prisma.$transaction(
         async (tx) => {
+        await tx.$queryRaw`SELECT id FROM maintenances WHERE id = ${maintenance.id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const currentOrder = await tx.maintenance.findFirst({ where: { id: maintenance.id, companyId } });
+        if (!currentOrder || currentOrder.updatedAt.getTime() !== maintenance.updatedAt.getTime()) throw new HttpError(409, 'Ordem alterada por outra operação. Atualize os dados.');
+        await tx.$queryRaw`SELECT id FROM vehicles WHERE id = ${maintenance.vehicleId} AND "companyId" = ${companyId} FOR UPDATE`;
+
+
+        const currentVehicle = await tx.vehicle.findFirstOrThrow({ where: { id: maintenance.vehicleId, companyId } });
+        if (kmConclusao < currentVehicle.currentMileage) throw new HttpError(409, 'A quilometragem do veículo foi alterada. Atualize os dados.');
         const existingFinancial = await tx.financialTransaction.findFirst({
           where: {
             companyId,
@@ -800,7 +819,8 @@ export class PrismaMaintenanceController {
           });
         }
 
-        if (vehicle.status === VehicleStatus.MAINTENANCE) {
+        const otherOrders = await tx.maintenance.count({ where: { companyId, vehicleId: vehicle.id, id: { not: maintenance.id }, status: { in: ['IN_PROGRESS', 'WAITING_PARTS'] } } });
+        if (!otherOrders && currentVehicle.status === VehicleStatus.MAINTENANCE) {
           await tx.vehicle.update({
             where: { id: vehicle.id },
             data: {
@@ -893,15 +913,20 @@ export class PrismaMaintenanceController {
       const vehiclePlate = maintenance.vehicle?.plate || '';
 
       await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM maintenances WHERE id = ${maintenance.id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const currentOrder = await tx.maintenance.findFirst({ where: { id: maintenance.id, companyId } });
+        if (!currentOrder || currentOrder.updatedAt.getTime() !== maintenance.updatedAt.getTime()) throw new HttpError(409, 'Ordem alterada por outra operação. Atualize os dados.');
+        await tx.$queryRaw`SELECT id FROM vehicles WHERE id = ${maintenance.vehicleId} AND "companyId" = ${companyId} FOR UPDATE`;
+
         // A relação da manutenção com o lançamento financeiro usa SET NULL.
         // Portanto, excluir a OS não apaga o histórico contábil.
-        if (oldStatus === MaintenanceStatus.IN_PROGRESS) {
+        if ([MaintenanceStatus.IN_PROGRESS, MaintenanceStatus.WAITING_PARTS].includes(oldStatus as any)) {
           const otherActive = await tx.maintenance.count({
             where: {
               companyId,
               vehicleId,
               id: { not: maintenance.id },
-              status: MaintenanceStatus.IN_PROGRESS,
+              status: { in: ['IN_PROGRESS', 'WAITING_PARTS'] },
             },
           });
 
@@ -990,6 +1015,7 @@ export class PrismaMaintenanceController {
       }
 
       const requestedStatus = (data.status || 'SCHEDULED') as MaintenanceStatus;
+      if (!['SCHEDULED', 'IN_PROGRESS'].includes(requestedStatus)) throw new HttpError(400, 'Crie a ordem agendada ou em execução e use a ação de conclusão.');
 
       if (requestedStatus === MaintenanceStatus.IN_PROGRESS) {
         const activeRental = await prisma.rental.findFirst({
@@ -1105,9 +1131,16 @@ export class PrismaMaintenanceController {
         }
       }
 
-      const codigo = await this.generateCode(companyId);
-
       const created = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM vehicles WHERE id = ${vehicle.id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const freshVehicle = await tx.vehicle.findFirstOrThrow({ where: { id: vehicle.id, companyId } });
+        if (kmEntrada < freshVehicle.currentMileage) throw new HttpError(409, 'A quilometragem do veículo foi alterada. Atualize a ordem.');
+        if (requestedStatus === 'IN_PROGRESS') {
+          const conflict = await tx.rental.count({ where: { vehicleId: vehicle.id, companyId, status: { in: ['ACTIVE', 'SCHEDULED', 'OVERDUE', 'BLOCKED'] } } });
+          if (conflict || freshVehicle.status !== 'AVAILABLE') throw new HttpError(409, 'Veículo indisponível para manutenção.');
+        }
+        await tx.$queryRaw`SELECT id FROM companies WHERE id = ${companyId} FOR UPDATE`;
+        const codigo = await this.generateCode(companyId, tx);
         const maintenance = await tx.maintenance.create({
           data: {
             companyId,
@@ -1235,7 +1268,7 @@ export class PrismaMaintenanceController {
       });
 
       res.status(201).json({
-        message: `Ordem de manutenção ${codigo} criada com sucesso!`,
+        message: `Ordem de manutenção ${created.codigo} criada com sucesso!`,
         data: serializeMaintenance(created),
       });
     } catch (err) {

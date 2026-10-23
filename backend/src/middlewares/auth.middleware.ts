@@ -1,3 +1,4 @@
+import { digest } from '../services/auth-session.js';
 import { Request, Response, NextFunction } from 'express';
 
 import { verifyAccessToken, TokenPayload } from '../config/jwt.js';
@@ -5,6 +6,14 @@ import { prisma } from '../config/prisma.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: TokenPayload;
+}
+
+export function requireCompany(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.user?.companyId) {
+    res.status(403).json({ error: 'COMPANY_REQUIRED', message: 'Esta operação exige uma conta vinculada a uma empresa.' });
+    return;
+  }
+  next();
 }
 
 /**
@@ -45,56 +54,32 @@ export async function authMiddleware(
     return;
   }
 
-  req.user = payload;
-
-  /**
-   * SUPER_ADMIN sempre pode acessar o sistema,
-   * inclusive durante o modo manutenção.
-   */
-  if (payload.role === 'SUPER_ADMIN') {
-    next();
-    return;
-  }
-
   try {
-    const platformSettings = await prisma.platformSettings.findUnique({
-      where: {
-        id: 'platform',
-      },
-      select: {
-        maintenanceMode: true,
-      },
-    });
-
-    /**
-     * Se o modo manutenção estiver ativo,
-     * usuários comuns não podem continuar utilizando
-     * as rotas protegidas da API.
-     */
-    if (platformSettings?.maintenanceMode === true) {
-      res.status(503).json({
-        error: 'MAINTENANCE_MODE',
-        message:
-          'O sistema está temporariamente em manutenção. Tente novamente mais tarde.',
-      });
+    if (!payload.sessionId || typeof payload.userId !== 'string') {
+      res.status(401).json({ error: 'SESSION_INVALID', message: 'Entre novamente para continuar.' });
       return;
     }
-  } catch (error) {
-    console.error(
-      'Erro ao verificar modo manutenção da plataforma:',
-      error
-    );
-
-    /**
-     * Em caso de falha na consulta das configurações,
-     * não bloqueamos automaticamente o sistema.
-     *
-     * Isso evita que uma indisponibilidade momentânea
-     * da tabela de configurações derrube todos os usuários.
-     */
-  }
-
-  next();
+    const session = await prisma.authSession.findFirst({
+      where: { id: payload.sessionId, userId: payload.userId, expiresAt: { gt: new Date() } },
+      include: { user: { include: { company: true } } },
+    });
+    const user = session?.user;
+    if (!user || !user.active || session.credentialHash !== digest(user.password) ||
+        (user.role !== 'SUPER_ADMIN' && (!user.company?.active || user.company.status !== 'ACTIVE'))) {
+      res.status(401).json({ error: 'SESSION_INVALID', message: 'Sessão revogada ou conta inativa.' });
+      return;
+    }
+    req.user = { sessionId: session.id, userId: user.id, companyId: user.companyId,
+      role: user.role, email: user.email, name: user.name };
+    if (user.role !== 'SUPER_ADMIN') {
+      const settings = await prisma.platformSettings.findUnique({ where: { id: 'platform' } });
+      if (settings?.maintenanceMode) {
+        res.status(503).json({ error: 'MAINTENANCE_MODE', message: 'O sistema está temporariamente em manutenção.' });
+        return;
+      }
+    }
+    next();
+  } catch (err) { next(err); }
 }
 
 /**
