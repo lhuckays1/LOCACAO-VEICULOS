@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { vehiclesController } from '../controllers/vehicles.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { authMiddleware, requireCompany } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/role.middleware.js';
 import { uppercaseMiddleware } from '../middlewares/uppercase.middleware.js';
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, requireCompany);
 
 router.get('/', (req, res, next) => vehiclesController.list(req, res, next));
 router.get('/:id', (req, res, next) => vehiclesController.getById(req, res, next));

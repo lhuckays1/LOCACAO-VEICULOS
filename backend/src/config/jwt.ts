@@ -1,13 +1,12 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  'frota-crm-enterprise-super-secret-jwt-key-2026';
+import { randomUUID } from 'node:crypto';
+import { requiredSecret } from './env.js';
 
-const REFRESH_SECRET =
-  process.env.REFRESH_SECRET ||
-  'frota-crm-enterprise-refresh-secret-jwt-key-2026';
+const JWT_SECRET = requiredSecret('JWT_SECRET');
+const REFRESH_SECRET = requiredSecret('JWT_REFRESH_SECRET');
+if (JWT_SECRET === REFRESH_SECRET) throw new Error('Os segredos JWT devem ser diferentes.');
 
 /**
  * Duração padrão utilizada quando nenhuma configuração
@@ -30,6 +29,7 @@ export type UserRole =
   | 'FINANCIAL';
 
 export interface TokenPayload {
+  sessionId?: string;
   userId: string;
   companyId: string | null;
   email: string;
@@ -76,6 +76,7 @@ export function generateRefreshToken(
 ): string {
   return jwt.sign(payload, REFRESH_SECRET, {
     expiresIn: REFRESH_TOKEN_EXPIRATION,
+    jwtid: randomUUID(),
   });
 }
 
@@ -85,7 +86,7 @@ export function verifyAccessToken(
   try {
     return jwt.verify(
       token,
-      JWT_SECRET
+      JWT_SECRET, { algorithms: ['HS256'] }
     ) as TokenPayload;
   } catch {
     return null;
@@ -98,7 +99,7 @@ export function verifyRefreshToken(
   try {
     return jwt.verify(
       token,
-      REFRESH_SECRET
+      REFRESH_SECRET, { algorithms: ['HS256'] }
     ) as TokenPayload;
   } catch {
     return null;

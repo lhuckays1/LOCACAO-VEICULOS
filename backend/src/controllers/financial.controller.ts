@@ -1,12 +1,8 @@
+import { cashFlow } from '../services/cashflow.js';
+import { financialRelations, serializeFinancial, tenantTransactions, validDate, money, validateFinancialLinks, settleFinancial } from '../services/financial.js';
+import { HttpError } from '../utils/api-error.js';
 import { Response, NextFunction } from 'express';
-import {
-  db,
-  generateUUID,
-  FinancialTransaction,
-  FinancialCategory,
-  CostCenter,
-  FinancialPaymentMethod,
-} from '../db/store.js';
+
 import {
   createFinancialTransactionSchema,
   updateFinancialTransactionSchema,
@@ -23,48 +19,7 @@ export class FinancialController {
   /**
    * Helper to enrich a financial transaction with related entity data
    */
-  private enrichTransaction(tx: FinancialTransaction, companyId: string) {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const client = tx.clientId ? db.clients.find((c) => c.id === tx.clientId) : null;
-    const vehicle = tx.vehicleId ? db.vehicles.find((v) => v.id === tx.vehicleId) : null;
-    const category = tx.categoryId ? db.financialCategories.find((c) => c.id === tx.categoryId) : null;
-    const costCenter = tx.costCenterId ? db.costCenters.find((cc) => cc.id === tx.costCenterId) : null;
-    const rental = tx.rentalId ? db.rentals.find((r) => r.id === tx.rentalId) : null;
-
-    // Calculate days overdue
-    let daysOverdue = 0;
-    if (tx.status !== 'PAID' && tx.status !== 'CANCELLED' && tx.dueDate < todayStr) {
-      const dueTime = new Date(`${tx.dueDate}T00:00:00`).getTime();
-      const todayTime = new Date(`${todayStr}T00:00:00`).getTime();
-      daysOverdue = Math.max(0, Math.floor((todayTime - dueTime) / (1000 * 60 * 60 * 24)));
-    }
-
-    // Calculate suggested late interest (2% fine + 1% interest per month)
-    let suggestedFine = 0;
-    let suggestedInterest = 0;
-    if (daysOverdue > 0 && tx.remainingAmount > 0) {
-      suggestedFine = Number((tx.remainingAmount * 0.02).toFixed(2));
-      suggestedInterest = Number(((tx.remainingAmount * 0.01 * daysOverdue) / 30).toFixed(2));
-    }
-
-    return {
-      ...tx,
-      clientName: client ? client.name : null,
-      clientDocument: client ? client.cpfCnpj : null,
-      clientPhone: client ? client.phone : null,
-      vehiclePlate: vehicle ? vehicle.plate : null,
-      vehicleModel: vehicle ? `${vehicle.brand} ${vehicle.model}` : null,
-      categoryName: category ? category.name : 'SEM CATEGORIA',
-      categoryColor: category?.color || '#64748B',
-      costCenterName: costCenter ? costCenter.name : 'GERAL',
-      costCenterCode: costCenter ? costCenter.code : '000',
-      contractNumber: rental ? (rental.codigoContrato || rental.rentalNumber) : null,
-      daysOverdue,
-      suggestedFine,
-      suggestedInterest,
-      suggestedTotalToPay: Number((tx.remainingAmount + suggestedFine + suggestedInterest).toFixed(2)),
-    };
-  }
+  private enrichTransaction(tx: Awaited<ReturnType<typeof tenantTransactions>>[number], _companyId: string) { return tx; }
 
 
 /**
@@ -859,11 +814,11 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
   async getPayables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const companyId = req.user!.companyId;
-      db.updateFinancialStatuses();
+
 
       const { status, categoryId, costCenterId, vehicleId, startDate, endDate, search } = req.query;
 
-      let result = db.financialTransactions.filter(
+      let result = (await tenantTransactions(companyId)).filter(
         (t) => (t.tenantId === companyId || t.companyId === companyId) && t.type === 'EXPENSE'
       );
 
@@ -1035,67 +990,26 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
    */
   async createTransaction(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const parsed = createFinancialTransactionSchema.parse(req.body);
-
-      const now = new Date().toISOString();
-      const gross = Number(parsed.grossAmount);
-      const discount = Number(parsed.discountAmount || 0);
-      const interest = Number(parsed.interestAmount || 0);
-      const net = Math.max(0, Number((gross - discount + interest).toFixed(2)));
-
-      const todayStr = now.split('T')[0];
-      const isOverdue = parsed.dueDate < todayStr;
-
-      const newTx: FinancialTransaction = {
-        id: generateUUID(),
-        tenantId: companyId,
-        companyId,
-        type: parsed.type,
-        origin: parsed.origin,
-        description: parsed.description.toUpperCase(),
-        categoryId: parsed.categoryId || null,
-        costCenterId: parsed.costCenterId || null,
-        clientId: parsed.clientId || null,
-        vehicleId: parsed.vehicleId || null,
-        rentalId: parsed.rentalId || null,
-        rentalPaymentId: null,
-        recurringId: null,
-        grossAmount: gross,
-        discountAmount: discount,
-        interestAmount: interest,
-        netAmount: net,
-        paidAmount: 0,
-        remainingAmount: net,
-        competencyDate: parsed.competencyDate || parsed.dueDate,
-        dueDate: parsed.dueDate,
-        settlementDate: null,
-        paymentMethod: (parsed.paymentMethod as FinancialPaymentMethod) || 'PIX',
-        status: isOverdue ? 'OVERDUE' : 'PENDING',
-        isRecurring: !!parsed.isRecurring,
-        installmentNumber: parsed.installmentNumber || null,
-        totalInstallments: parsed.totalInstallments || null,
-        notes: parsed.notes ? parsed.notes.toUpperCase() : null,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      db.financialTransactions.unshift(newTx);
-
-      db.createAuditLog(companyId, req.user!.userId, 'CREATE', 'FINANCIAL_TRANSACTION', newTx.id, null, {
-        description: newTx.description,
-        type: newTx.type,
-        netAmount: newTx.netAmount,
-        dueDate: newTx.dueDate,
+      const companyId = req.user!.companyId!;
+      const data = createFinancialTransactionSchema.parse(req.body);
+      const dueDate = validDate(data.dueDate);
+      const competencyDate = validDate(data.competencyDate || data.dueDate);
+      const netAmount = money(data.grossAmount).minus(money(data.discountAmount || 0)).plus(money(data.interestAmount || 0));
+      if (netAmount.lte(0)) throw new HttpError(400, 'O valor líquido deve ser positivo.');
+      const created = await prisma.$transaction(async tx => {
+        await validateFinancialLinks(tx, companyId, data);
+        const record = await tx.financialTransaction.create({ data: {
+          ...data, companyId, categoryId: data.categoryId || null, costCenterId: data.costCenterId || null,
+          clientId: data.clientId || null, vehicleId: data.vehicleId || null, rentalId: data.rentalId || null,
+          rentalPaymentId: null, description: data.description.toUpperCase(),
+          dueDate, competencyDate, netAmount, remainingAmount: netAmount,
+          status: dueDate < validDate(new Date().toISOString()) ? 'OVERDUE' : 'PENDING',
+        }, include: financialRelations });
+        await tx.auditLog.create({ data: { companyId, userId: req.user!.userId, action: 'CREATE', entity: 'FINANCIAL_TRANSACTION', entityId: record.id } });
+        return record;
       });
-
-      res.status(201).json({
-        message: 'Lançamento financeiro registrado com sucesso!',
-        data: this.enrichTransaction(newTx, companyId),
-      });
-    } catch (err) {
-      next(err);
-    }
+      res.status(201).json({ message: 'Lançamento registrado com sucesso!', data: serializeFinancial(created) });
+    } catch (err) { next(err); }
   }
 
   /**
@@ -1104,32 +1018,10 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
    */
   async settleTransaction(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { id } = req.params;
-      const parsed = settleTransactionSchema.parse(req.body);
-
-      const result = db.settleTransaction(id, companyId, {
-        amount: parsed.amount,
-        paymentDate: parsed.paymentDate,
-        paymentMethod: parsed.paymentMethod as FinancialPaymentMethod,
-        interest: parsed.interest,
-        fine: parsed.fine,
-        discount: parsed.discount,
-        notes: parsed.notes || undefined,
-        receiptUrl: parsed.receiptUrl || undefined,
-        userId: req.user!.userId,
-      });
-
-      res.json({
-        message: `Baixa no valor de R$ ${parsed.amount.toFixed(2)} confirmada com sucesso!`,
-        data: {
-          transaction: this.enrichTransaction(result.transaction, companyId),
-          settlement: result.settlement,
-        },
-      });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const result = await settleFinancial(req.params.id, companyId, req.user!.userId, settleTransactionSchema.parse(req.body));
+      res.json({ message: 'Baixa confirmada com sucesso!', data: result });
+    } catch (err) { next(err); }
   }
 
   /**
@@ -1138,19 +1030,22 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
    */
   async cancelTransaction(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { id } = req.params;
-      const parsed = cancelTransactionSchema.parse(req.body);
-
-      const cancelled = db.cancelTransaction(id, companyId, req.user!.userId, parsed.reason);
-
-      res.json({
-        message: 'Lançamento cancelado com sucesso!',
-        data: this.enrichTransaction(cancelled, companyId),
+      const companyId = req.user!.companyId!;
+      const data = cancelTransactionSchema.parse(req.body);
+      const record = await prisma.$transaction(async tx => {
+        const id = req.params.id;
+        await tx.$queryRaw`SELECT id FROM financial_transactions WHERE id = ${id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const current = await tx.financialTransaction.findFirst({ where: { id, companyId }, include: { settlements: true } });
+        if (!current) throw new HttpError(404, 'Lançamento não encontrado.');
+        if (Number(current.paidAmount) > 0 || current.settlements.length) throw new HttpError(409, 'Lançamento com baixa exige estorno antes do cancelamento.');
+        const updated = await tx.financialTransaction.update({ where: { id }, data: { status: 'CANCELLED',
+          notes: [current.notes, `CANCELAMENTO: ${data.reason || 'SEM JUSTIFICATIVA'}`].filter(Boolean).join(' | ') }, include: financialRelations });
+        if (current.rentalPaymentId) await tx.rentalPayment.updateMany({ where: { id: current.rentalPaymentId, tenantId: companyId }, data: { status: 'CANCELADO' } });
+        await tx.auditLog.create({ data: { companyId, userId: req.user!.userId, action: 'CANCEL', entity: 'FINANCIAL_TRANSACTION', entityId: id } });
+        return updated;
       });
-    } catch (err) {
-      next(err);
-    }
+      res.json({ message: 'Lançamento cancelado.', data: serializeFinancial(record) });
+    } catch (err) { next(err); }
   }
 
   /**
@@ -1162,130 +1057,17 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
       const companyId = req.user!.companyId;
       const { startDate, endDate, viewMode = 'DAILY' } = req.query;
 
-      db.updateFinancialStatuses();
+
 
       const today = new Date();
       const start = startDate ? String(startDate) : new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
       const end = endDate ? String(endDate) : new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
 
-      const transactions = db.financialTransactions.filter(
+      const transactions = (await tenantTransactions(companyId)).filter(
         (t) => (t.tenantId === companyId || t.companyId === companyId) && t.status !== 'CANCELLED'
       );
 
-      // Prior balance before start date
-      const priorIncomes = transactions
-        .filter((t) => t.type === 'INCOME' && t.status === 'PAID' && (t.settlementDate || t.dueDate) < start)
-        .reduce((sum, t) => sum + t.paidAmount, 0);
-
-      const priorExpenses = transactions
-        .filter((t) => t.type === 'EXPENSE' && t.status === 'PAID' && (t.settlementDate || t.dueDate) < start)
-        .reduce((sum, t) => sum + t.paidAmount, 0);
-
-      const openingBalance = Number((priorIncomes - priorExpenses).toFixed(2));
-
-      // Range transactions
-      const periodTx = transactions.filter((t) => {
-        const dateToCheck = t.settlementDate || t.dueDate;
-        return dateToCheck >= start && dateToCheck <= end;
-      });
-
-      // Group by date
-      const dailyMap: Record<string, {
-        date: string;
-        inflowRealized: number;
-        inflowProjected: number;
-        outflowRealized: number;
-        outflowProjected: number;
-        items: any[];
-      }> = {};
-
-      // Seed all dates in the range
-      const curr = new Date(`${start}T00:00:00`);
-      const last = new Date(`${end}T00:00:00`);
-      while (curr <= last) {
-        const dStr = curr.toISOString().split('T')[0];
-        dailyMap[dStr] = {
-          date: dStr,
-          inflowRealized: 0,
-          inflowProjected: 0,
-          outflowRealized: 0,
-          outflowProjected: 0,
-          items: [],
-        };
-        curr.setDate(curr.getDate() + 1);
-      }
-
-      for (const t of periodTx) {
-        const dateKey = t.settlementDate || t.dueDate;
-        if (!dailyMap[dateKey]) {
-          dailyMap[dateKey] = {
-            date: dateKey,
-            inflowRealized: 0,
-            inflowProjected: 0,
-            outflowRealized: 0,
-            outflowProjected: 0,
-            items: [],
-          };
-        }
-
-        const enriched = this.enrichTransaction(t, companyId);
-        dailyMap[dateKey].items.push(enriched);
-
-        if (t.type === 'INCOME') {
-          dailyMap[dateKey].inflowRealized += t.paidAmount;
-          dailyMap[dateKey].inflowProjected += t.remainingAmount;
-        } else {
-          dailyMap[dateKey].outflowRealized += t.paidAmount;
-          dailyMap[dateKey].outflowProjected += t.remainingAmount;
-        }
-      }
-
-      let runningRealized = openingBalance;
-      let runningProjected = openingBalance;
-
-      const daysArray = Object.keys(dailyMap)
-        .sort()
-        .map((dKey) => {
-          const day = dailyMap[dKey];
-          const netRealized = Number((day.inflowRealized - day.outflowRealized).toFixed(2));
-          const netProjected = Number(
-            (day.inflowRealized + day.inflowProjected - (day.outflowRealized + day.outflowProjected)).toFixed(2)
-          );
-
-          runningRealized = Number((runningRealized + netRealized).toFixed(2));
-          runningProjected = Number((runningProjected + netProjected).toFixed(2));
-
-          return {
-            date: day.date,
-            inflowRealized: Number(day.inflowRealized.toFixed(2)),
-            inflowProjected: Number(day.inflowProjected.toFixed(2)),
-            outflowRealized: Number(day.outflowRealized.toFixed(2)),
-            outflowProjected: Number(day.outflowProjected.toFixed(2)),
-            netRealized,
-            netProjected,
-            balanceRealized: runningRealized,
-            balanceProjected: runningProjected,
-            itemsCount: day.items.length,
-            items: day.items,
-          };
-        });
-
-      const totalInflowRealized = daysArray.reduce((acc, d) => acc + d.inflowRealized, 0);
-      const totalInflowProjected = daysArray.reduce((acc, d) => acc + d.inflowProjected, 0);
-      const totalOutflowRealized = daysArray.reduce((acc, d) => acc + d.outflowRealized, 0);
-      const totalOutflowProjected = daysArray.reduce((acc, d) => acc + d.outflowProjected, 0);
-
-      res.json({
-        period: { start, end },
-        openingBalance,
-        totalInflowRealized: Number(totalInflowRealized.toFixed(2)),
-        totalInflowProjected: Number(totalInflowProjected.toFixed(2)),
-        totalOutflowRealized: Number(totalOutflowRealized.toFixed(2)),
-        totalOutflowProjected: Number(totalOutflowProjected.toFixed(2)),
-        finalBalanceRealized: runningRealized,
-        finalBalanceProjected: runningProjected,
-        days: daysArray,
-      });
+      res.json(cashFlow(transactions, start, end));
     } catch (err) {
       next(err);
     }
@@ -1298,11 +1080,11 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
   async getOverdue(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const companyId = req.user!.companyId;
-      db.updateFinancialStatuses();
+
 
       const todayStr = new Date().toISOString().split('T')[0];
 
-      const overdueTx = db.financialTransactions.filter(
+      const overdueTx = (await tenantTransactions(companyId)).filter(
         (t) =>
           (t.tenantId === companyId || t.companyId === companyId) &&
           t.type === 'INCOME' &&
@@ -1326,7 +1108,7 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
         const clientId = tx.clientId || 'UNKNOWN';
 
         if (!clientMap[clientId]) {
-          const client = tx.clientId ? db.clients.find((c) => c.id === tx.clientId) : null;
+          const client = tx.client;
           clientMap[clientId] = {
             client: client || {
               id: 'UNKNOWN',
@@ -1396,13 +1178,13 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
       const companyId = req.user!.companyId;
       const { id } = req.params;
 
-      const vehicle = db.vehicles.find((v) => v.id === id && v.companyId === companyId);
+      const vehicle = await prisma.vehicle.findFirst({ where: { id, companyId } });
       if (!vehicle) {
         res.status(404).json({ error: 'VEHICLE_NOT_FOUND', message: 'Veículo não encontrado.' });
         return;
       }
 
-      const transactions = db.financialTransactions
+      const transactions = (await tenantTransactions(companyId))
         .filter((t) => t.vehicleId === id && t.status !== 'CANCELLED')
         .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
         .map((t) => this.enrichTransaction(t, companyId));
@@ -1448,78 +1230,31 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
    */
   async listCategories(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { type } = req.query;
-
-      let result = db.financialCategories.filter(
-        (c) => c.tenantId === companyId || c.companyId === companyId
-      );
-
-      if (type && type !== 'ALL') {
-        result = result.filter((c) => c.type === type);
-      }
-
-      result.sort((a, b) => a.name.localeCompare(b.name));
-
-      res.json({
-        total: result.length,
-        data: result,
-      });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const data = await prisma.financialCategory.findMany({ where: { companyId, active: true }, orderBy: { name: 'asc' } });
+      const filtered = data.filter(c => !req.query.type || req.query.type === "ALL" || c.type === req.query.type);
+      res.json({ total: filtered.length, data: filtered });
+    } catch (err) { next(err); }
   }
 
   async createCategory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const parsed = financialCategorySchema.parse(req.body);
-
-      const now = new Date().toISOString();
-      const newCat: FinancialCategory = {
-        id: generateUUID(),
-        tenantId: companyId,
-        companyId,
-        name: parsed.name.toUpperCase(),
-        type: parsed.type,
-        description: parsed.description ? parsed.description.toUpperCase() : null,
-        color: parsed.color || '#10B981',
-        active: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      db.financialCategories.push(newCat);
-
-      res.status(201).json({
-        message: 'Categoria financeira criada com sucesso!',
-        data: newCat,
-      });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const data = financialCategorySchema.parse(req.body);
+      const record = await prisma.financialCategory.create({ data: { ...data, name: data.name.toUpperCase(), companyId } });
+      res.status(201).json({ message: 'Categoria cadastrado.', data: record });
+    } catch (err) { next(err); }
   }
 
   async deleteCategory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { id } = req.params;
-
-      const idx = db.financialCategories.findIndex(
-        (c) => c.id === id && (c.tenantId === companyId || c.companyId === companyId)
-      );
-
-      if (idx === -1) {
-        res.status(404).json({ error: 'CATEGORY_NOT_FOUND', message: 'Categoria não encontrada.' });
-        return;
-      }
-
-      db.financialCategories.splice(idx, 1);
-
-      res.json({ message: 'Categoria excluída com sucesso!' });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const record = await prisma.financialCategory.findFirst({ where: { id: req.params.id, companyId } });
+      if (!record) throw new HttpError(404, 'Categoria não encontrado.');
+      // Preserve accounting history; inactive entries are no longer offered for new records.
+      await prisma.financialCategory.update({ where: { id: record.id }, data: { active: false } });
+      res.json({ message: 'Categoria removido.' });
+    } catch (err) { next(err); }
   }
 
   /**
@@ -1527,69 +1262,31 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
    */
   async listCostCenters(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const result = db.costCenters
-        .filter((cc) => cc.tenantId === companyId || cc.companyId === companyId)
-        .sort((a, b) => a.code.localeCompare(b.code));
-
-      res.json({
-        total: result.length,
-        data: result,
-      });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const data = await prisma.costCenter.findMany({ where: { companyId, active: true }, orderBy: { code: 'asc' } });
+      const filtered = data;
+      res.json({ total: filtered.length, data: filtered });
+    } catch (err) { next(err); }
   }
 
   async createCostCenter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const parsed = costCenterSchema.parse(req.body);
-
-      const now = new Date().toISOString();
-      const newCc: CostCenter = {
-        id: generateUUID(),
-        tenantId: companyId,
-        companyId,
-        code: parsed.code.toUpperCase(),
-        name: parsed.name.toUpperCase(),
-        description: parsed.description ? parsed.description.toUpperCase() : null,
-        active: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      db.costCenters.push(newCc);
-
-      res.status(201).json({
-        message: 'Centro de custo criado com sucesso!',
-        data: newCc,
-      });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const data = costCenterSchema.parse(req.body);
+      const record = await prisma.costCenter.create({ data: { ...data, name: data.name.toUpperCase(), companyId } });
+      res.status(201).json({ message: 'Centro de custo cadastrado.', data: record });
+    } catch (err) { next(err); }
   }
 
   async deleteCostCenter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const companyId = req.user!.companyId;
-      const { id } = req.params;
-
-      const idx = db.costCenters.findIndex(
-        (cc) => cc.id === id && (cc.tenantId === companyId || cc.companyId === companyId)
-      );
-
-      if (idx === -1) {
-        res.status(404).json({ error: 'COST_CENTER_NOT_FOUND', message: 'Centro de custo não encontrado.' });
-        return;
-      }
-
-      db.costCenters.splice(idx, 1);
-
-      res.json({ message: 'Centro de custo excluído com sucesso!' });
-    } catch (err) {
-      next(err);
-    }
+      const companyId = req.user!.companyId!;
+      const record = await prisma.costCenter.findFirst({ where: { id: req.params.id, companyId } });
+      if (!record) throw new HttpError(404, 'Centro de custo não encontrado.');
+      // Preserve accounting history; inactive entries are no longer offered for new records.
+      await prisma.costCenter.update({ where: { id: record.id }, data: { active: false } });
+      res.json({ message: 'Centro de custo removido.' });
+    } catch (err) { next(err); }
   }
 }
 

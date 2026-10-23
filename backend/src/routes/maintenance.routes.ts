@@ -1,16 +1,15 @@
 import { Router } from 'express';
-import { maintenanceController } from '../controllers/maintenance.controller.js';
-import { prismaMaintenanceController } from '../controllers/maintenance.prisma.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { maintenanceController } from '../controllers/maintenance.persisted.controller.js';
+import { authMiddleware, requireCompany } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/role.middleware.js';
 import { uppercaseMiddleware } from '../middlewares/uppercase.middleware.js';
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireCompany);
 
-// Dashboard, listagem e criação usam Prisma/PostgreSQL.
+// Todas as operações usam Prisma/PostgreSQL.
 router.get('/dashboard', (req, res, next) =>
-  prismaMaintenanceController.dashboard(req, res, next)
+  maintenanceController.dashboard(req, res, next)
 );
 
 router.get('/alerts', (req, res, next) =>
@@ -18,7 +17,7 @@ router.get('/alerts', (req, res, next) =>
 );
 
 router.get('/', (req, res, next) =>
-  prismaMaintenanceController.list(req, res, next)
+  maintenanceController.list(req, res, next)
 );
 
 router.get('/:id', (req, res, next) =>
@@ -29,11 +28,10 @@ router.post(
   '/',
   authorize(['ADMIN', 'MANAGER', 'OPERATOR']),
   uppercaseMiddleware,
-  (req, res, next) => prismaMaintenanceController.create(req, res, next)
+  (req, res, next) => maintenanceController.create(req, res, next)
 );
 
-// Demais operações permanecem na implementação atual e serão migradas
-// para Prisma na próxima etapa, sem quebrar o módulo existente.
+
 router.put(
   '/:id',
   authorize(['ADMIN', 'MANAGER', 'OPERATOR']),
@@ -44,20 +42,20 @@ router.put(
 router.post(
   '/:id/start',
   authorize(['ADMIN', 'MANAGER', 'OPERATOR']),
-  (req, res, next) => prismaMaintenanceController.start(req, res, next)
+  (req, res, next) => maintenanceController.start(req, res, next)
 );
 
 router.post(
   '/:id/complete',
   authorize(['ADMIN', 'MANAGER', 'OPERATOR']),
   uppercaseMiddleware,
-  (req, res, next) => prismaMaintenanceController.complete(req, res, next)
+  (req, res, next) => maintenanceController.complete(req, res, next)
 );
 
 router.delete(
   '/:id',
   authorize(['ADMIN', 'MANAGER']),
-  (req, res, next) => prismaMaintenanceController.delete(req, res, next)
+  (req, res, next) => maintenanceController.delete(req, res, next)
 );
 
 router.post(

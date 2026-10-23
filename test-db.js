@@ -15,9 +15,6 @@ console.log("🔄 Tentando conectar ao Supabase...");
 const client = new Client({
   connectionString,
   connectionTimeoutMillis: 15000,
-  ssl: {
-    rejectUnauthorized: false,
-  },
 });
 
 async function testConnection() {

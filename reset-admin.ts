@@ -1,56 +1,16 @@
-import { PrismaClient } from '@prisma/client';
+import './backend/src/config/env.js';
+import { prisma } from './backend/src/config/prisma.js';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
-
 async function main() {
-  const email = 'lucassilvaluiz98@gmail.com';
-
-  // Defina a nova senha
-  const novaSenha = 'Juvenal#123';
-
-  console.log('\n🔄 Redefinindo senha do SUPER_ADMIN...\n');
-
-  const senhaHash = await bcrypt.hash(novaSenha, 10);
-
-  const usuario = await prisma.user.update({
-    where: {
-      email,
-    },
-    data: {
-      password: senhaHash,
-      active: true,
-      role: 'SUPER_ADMIN',
-    },
+  const email = process.env.SUPER_ADMIN_EMAIL;
+  const password = process.env.SUPER_ADMIN_PASSWORD;
+  if (!email || !password || password.length < 12) throw new Error('Defina SUPER_ADMIN_EMAIL e SUPER_ADMIN_PASSWORD (mínimo 12 caracteres).');
+  const user = await prisma.user.findFirst({ where: { email, role: 'SUPER_ADMIN' } });
+  if (!user) throw new Error('SUPER_ADMIN não encontrado.');
+  await prisma.$transaction(async tx => {
+    await tx.user.update({ where: { id: user.id }, data: { password: await bcrypt.hash(password, 10) } });
+    await tx.authSession.deleteMany({ where: { userId: user.id } });
   });
-
-  console.log('==========================================');
-  console.log('✅ SUPER ADMIN ATUALIZADO COM SUCESSO');
-  console.log('==========================================');
-  console.log(`Nome: ${usuario.name}`);
-  console.log(`E-mail: ${usuario.email}`);
-  console.log(`Perfil: ${usuario.role}`);
-  console.log(`Ativo: ${usuario.active ? 'SIM' : 'NÃO'}`);
-  console.log('');
-  console.log('🔐 Nova senha definida: Admin@123456');
-  console.log('==========================================\n');
-
-  // Teste imediato do hash
-  const teste = await bcrypt.compare(novaSenha, usuario.password);
-
-  console.log(
-    teste
-      ? '✅ Hash validado com sucesso!'
-      : '❌ ERRO: Hash não corresponde à senha!'
-  );
+  console.log('Senha atualizada. As sessões anteriores foram encerradas.');
 }
-
-main()
-  .catch((error) => {
-    console.error('\n❌ Erro ao atualizar usuário:');
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+main().catch(err => { console.error(err); process.exitCode = 1; }).finally(() => prisma.$disconnect());

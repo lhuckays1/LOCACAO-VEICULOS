@@ -11,7 +11,6 @@ interface AuthContextType {
   register: (data: any) => Promise<void>;
   logout: () => void;
   hasRole: (allowedRoles: Role[]) => boolean;
-  loginAsDemo: (role: Role) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,7 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const ended = () => { setUser(null); setCompany(null); };
+    window.addEventListener('frota-session-ended', ended);
     checkAuth();
+    return () => window.removeEventListener('frota-session-ended', ended);
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -64,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     try {
-      api.auth.logout();
+      void api.auth.logout().catch(() => {});
     } catch {
       // Ignore
     }
@@ -79,16 +81,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return allowedRoles.includes(user.role);
   };
 
-  const loginAsDemo = async (role: Role) => {
-    const emailMap: Record<Role, string> = {
-      SUPER_ADMIN: 'lucassilvaluiz98@gmail.com',
-      ADMIN: 'admin@frotacrm.com.br',
-      MANAGER: 'gerente@frotacrm.com.br',
-      OPERATOR: 'operador@frotacrm.com.br',
-      FINANCIAL: 'financeiro@frotacrm.com.br',
-    };
-    await login(emailMap[role], 'admin123');
-  };
 
   return (
     <AuthContext.Provider
@@ -101,7 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         hasRole,
-        loginAsDemo,
       }}
     >
       {children}

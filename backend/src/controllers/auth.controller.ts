@@ -1,3 +1,4 @@
+import { issueSession, rotateSession } from '../services/auth-session.js';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma.js';
 
@@ -11,8 +12,6 @@ import {
 import {
   hashPassword,
   comparePassword,
-  generateAccessToken,
-  generateRefreshToken,
   verifyRefreshToken,
 } from '../config/jwt.js';
 
@@ -297,16 +296,7 @@ export class AuthController {
           result.user.name,
       };
 
-      const accessToken =
-        generateAccessToken(
-          tokenPayload,
-          settings.sessionDurationMinutes
-        );
-
-      const refreshToken =
-        generateRefreshToken(
-          tokenPayload
-        );
+      const { accessToken, refreshToken } = await issueSession(tokenPayload, result.user.password, settings.sessionDurationMinutes);
 
       res.status(201).json({
         message:
@@ -428,7 +418,7 @@ export class AuthController {
         user.role !== 'SUPER_ADMIN' &&
         (
           !user.company ||
-          !user.company.active
+          (!user.company.active || user.company.status !== 'ACTIVE')
         )
       ) {
         res.status(403).json({
@@ -482,16 +472,7 @@ export class AuthController {
           user.name,
       };
 
-      const accessToken =
-        generateAccessToken(
-          tokenPayload,
-          settings.sessionDurationMinutes
-        );
-
-      const refreshToken =
-        generateRefreshToken(
-          tokenPayload
-        );
+      const { accessToken, refreshToken } = await issueSession(tokenPayload, user.password, settings.sessionDurationMinutes);
 
       /**
        * Atualiza último login.
@@ -629,7 +610,7 @@ export class AuthController {
         user.role !== 'SUPER_ADMIN' &&
         (
           !user.company ||
-          !user.company.active
+          (!user.company.active || user.company.status !== 'ACTIVE')
         )
       ) {
         res.status(403).json({
@@ -683,16 +664,7 @@ export class AuthController {
           user.name,
       };
 
-      const accessToken =
-        generateAccessToken(
-          newPayload,
-          settings.sessionDurationMinutes
-        );
-
-      const refreshToken =
-        generateRefreshToken(
-          newPayload
-        );
+      const { accessToken, refreshToken } = await rotateSession({ ...newPayload, sessionId: payload.sessionId }, data.refreshToken, user.password, settings.sessionDurationMinutes);
 
       res.json({
         accessToken,
@@ -876,9 +848,9 @@ export class AuthController {
         },
       });
 
-      res.json({
-        message: 'Senha alterada com sucesso.',
-      });
+      await prisma.authSession.deleteMany({ where: { userId: user.id } });
+      const tokens = await issueSession({ userId: user.id, companyId: user.companyId, email: user.email, name: user.name, role: user.role }, passwordHash, settings.sessionDurationMinutes);
+      res.json({ message: 'Senha alterada com sucesso.', ...tokens });
     } catch (err) {
       next(err);
     }
@@ -889,26 +861,15 @@ export class AuthController {
    * LOGOUT
    * ============================================================
    */
-  async logout(
-    _req: Request,
-    res: Response
-  ): Promise<void> {
-
-    /*
-     * JWT stateless.
-     *
-     * O logout real acontece no frontend removendo os tokens.
-     *
-     * Futuramente podemos implementar blacklist
-     * de refresh tokens no banco.
-     */
-
-    res.json({
-      message:
-        'Logout realizado com sucesso.',
-    });
+  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const payload = typeof req.body?.refreshToken === 'string'
+        ? verifyRefreshToken(req.body.refreshToken) : null;
+      if (payload?.sessionId) {
+        await prisma.authSession.deleteMany({ where: { id: payload.sessionId, userId: payload.userId } });
+      }
+      res.json({ message: 'Logout realizado com sucesso.' });
+    } catch (err) { next(err); }
   }
 }
-
-export const authController =
-  new AuthController();
+export const authController = new AuthController();
