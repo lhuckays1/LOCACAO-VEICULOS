@@ -33,8 +33,15 @@ npm start
 
 O build gera `dist/public` (interface) e `dist/server.js` (servidor).
 O comando de start não depende de tsx nem do servidor de desenvolvimento Vite.
-As configurações Vercel foram ajustadas para `dist/public`; configure as mesmas
-variáveis e execute as migrações separadamente antes da publicação na Vercel.
+Na Vercel, configure as mesmas variáveis. O comando `vercel-build` aplica as
+migrações no ambiente de produção antes de gerar o build; previews não executam
+migrações. Os segredos são validados antes de acessar o banco.
+
+Se o banco já existir sem histórico do Prisma, o procedimento só registra a
+baseline após confirmar que seu esquema corresponde exatamente ao esquema inicial
+ou ao esquema completo atual. Qualquer divergência interrompe a publicação sem
+recriar tabelas. Bancos com migrações incompletas exigem análise antes de continuar.
+O processo valida ao final o histórico aplicado e a existência de `auth_sessions`.
 
 ### Docker Compose
 

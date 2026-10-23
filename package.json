@@ -17,7 +17,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "postinstall": "prisma generate",
     "test": "tsx --test tests/*.test.ts",
-    "test:integration": "tsx --test tests/integration/*.test.ts"
+    "test:integration": "tsx --test tests/integration/*.test.ts",
+    "vercel-build": "node scripts/deploy-vercel.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
