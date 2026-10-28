@@ -85,17 +85,24 @@ export class ReportsController {
       const startDate = req.query.startDate ? new Date(`${req.query.startDate}T00:00:00`) : new Date(endDate.getFullYear(), endDate.getMonth(), 1);
       if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || startDate > endDate) throw new HttpError(400, 'Informe um período válido.');
       const range = { gte: startDate, lte: endDate };
-      const [vehicles, rentals, fines, incidents, inspections, maintenance, expenses] = await Promise.all([
-        prisma.vehicle.count({ where: { companyId } }),
-        prisma.rental.findMany({ where: { companyId, startDate: range }, select: { id: true, rentalNumber: true, status: true, amount: true, startDate: true, vehicle: { select: { plate: true } }, client: { select: { name: true } } }, orderBy: { startDate: 'desc' } }),
-        prisma.fine.findMany({ where: { companyId, date: range }, include, orderBy: { date: 'desc' } }),
-        prisma.incident.findMany({ where: { companyId, date: range }, include, orderBy: { date: 'desc' } }),
-        prisma.inspection.findMany({ where: { companyId, createdAt: range }, include: { vehicle: { select: { plate: true } }, client: { select: { name: true } }, rental: { select: { rentalNumber: true } } }, orderBy: { createdAt: 'desc' } }),
-        prisma.maintenance.findMany({ where: { companyId, dataAgendamento: range }, include: { vehicle: { select: { plate: true } } }, orderBy: { dataAgendamento: 'desc' } }),
-        prisma.expense.aggregate({ where: { companyId, date: range }, _sum: { amount: true }, _count: true }),
+      const vehicleId = req.query.vehicleId ? String(req.query.vehicleId) : undefined;
+      const vehicle = vehicleId ? await prisma.vehicle.findFirst({ where: { id: vehicleId, companyId }, select: { id: true, plate: true, brand: true, model: true, currentMileage: true } }) : null;
+      if (vehicleId && !vehicle) throw new HttpError(404, 'Veículo não encontrado.');
+      const vehicleFilter = vehicleId ? { vehicleId } : {};
+      const [vehicles, rentals, fines, incidents, inspections, maintenance, transactions, insurancePolicies] = await Promise.all([
+        vehicleId ? Promise.resolve(1) : prisma.vehicle.count({ where: { companyId } }),
+        prisma.rental.findMany({ where: { companyId, startDate: range, ...vehicleFilter }, select: { id: true, rentalNumber: true, status: true, amount: true, startDate: true, vehicle: { select: { plate: true } }, client: { select: { name: true } } }, orderBy: { startDate: 'desc' } }),
+        prisma.fine.findMany({ where: { companyId, date: range, ...vehicleFilter }, include, orderBy: { date: 'desc' } }),
+        prisma.incident.findMany({ where: { companyId, date: range, ...vehicleFilter }, include, orderBy: { date: 'desc' } }),
+        prisma.inspection.findMany({ where: { companyId, createdAt: range, ...vehicleFilter }, include: { vehicle: { select: { plate: true } }, client: { select: { name: true } }, rental: { select: { rentalNumber: true } } }, orderBy: { createdAt: 'desc' } }),
+        prisma.maintenance.findMany({ where: { companyId, dataAgendamento: range, ...vehicleFilter }, include: { vehicle: { select: { plate: true } } }, orderBy: { dataAgendamento: 'desc' } }),
+        prisma.financialTransaction.findMany({ where: { companyId, dueDate: range, status: { not: 'CANCELLED' }, ...vehicleFilter }, include: { vehicle: { select: { plate: true } }, category: { select: { name: true } } }, orderBy: { dueDate: 'asc' } }),
+        prisma.vehicleInsurance.findMany({ where: { companyId, ...(vehicleId ? { vehicleId } : {}), startDate: { lte: endDate }, endDate: { gte: startDate } }, include: { vehicle: { select: { plate: true } } } }),
       ]);
       const fineAmount = fines.reduce((sum, item) => sum + Number(item.amount), 0);
-      res.json({ period: { startDate: startDate.toISOString(), endDate: endDate.toISOString() }, summary: { vehicles, rentals: rentals.length, rentalRevenue: rentals.reduce((sum, item) => sum + Number(item.amount), 0), fines: fines.length, fineAmount, incidents: incidents.length, inspections: inspections.length, maintenance: maintenance.length, expenses: Number(expenses._sum.amount ?? 0) }, rentals: rentals.map(item => ({ ...item, amount: Number(item.amount) })), fines: fines.map(item => ({ ...item, amount: Number(item.amount) })), incidents, inspections, maintenance: maintenance.map(item => ({ ...item, custoTotal: Number(item.custoTotal) })) });
+      const financialIncome = transactions.filter(tx => tx.type === 'INCOME').reduce((sum, tx) => sum + Number(tx.netAmount), 0);
+      const financialExpense = transactions.filter(tx => tx.type === 'EXPENSE').reduce((sum, tx) => sum + Number(tx.netAmount), 0);
+      res.json({ vehicle, period: { startDate: startDate.toISOString(), endDate: endDate.toISOString() }, summary: { vehicles, rentals: rentals.length, rentalRevenue: rentals.reduce((sum, item) => sum + Number(item.amount), 0), financialIncome, financialExpense, financialBalance: financialIncome - financialExpense, fines: fines.length, fineAmount, incidents: incidents.length, inspections: inspections.length, maintenance: maintenance.length, insurancePolicies: insurancePolicies.length, insurancePremiums: insurancePolicies.reduce((sum, item) => sum + Number(item.totalPremium), 0), expenses: financialExpense }, rentals: rentals.map(item => ({ ...item, amount: Number(item.amount) })), fines: fines.map(item => ({ ...item, amount: Number(item.amount) })), incidents, inspections, maintenance: maintenance.map(item => ({ ...item, custoTotal: Number(item.custoTotal) })), transactions: transactions.map(tx => ({ ...tx, grossAmount: Number(tx.grossAmount), netAmount: Number(tx.netAmount), paidAmount: Number(tx.paidAmount), remainingAmount: Number(tx.remainingAmount) })), insurancePolicies: insurancePolicies.map(policy => ({ ...policy, totalPremium: Number(policy.totalPremium) })) });
     } catch (error) { next(error); }
   }
 }

@@ -474,6 +474,14 @@ export const api = {
         method: 'DELETE',
       }),
     getCostCenters: () => request<{ total: number; data: any[] }>('/financial/cost-centers'),
+    getInsurances: (params?: { vehicleId?: string; status?: string }) => {
+      const query = new URLSearchParams();
+      if (params?.vehicleId) query.set('vehicleId', params.vehicleId);
+      if (params?.status) query.set('status', params.status);
+      return request<{ total: number; data: any[] }>(`/financial/insurances${query.size ? `?${query}` : ''}`);
+    },
+    createInsurance: (data: any) => request<{ message: string; data: any }>('/financial/insurances', { method: 'POST', body: JSON.stringify(data) }),
+    updateInsuranceStatus: (id: string, status: 'ACTIVE' | 'CANCELLED') => request<{ message: string; data: any }>(`/financial/insurances/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     createCostCenter: (data: any) =>
       request<{ message: string; data: any }>('/financial/cost-centers', {
         method: 'POST',
@@ -529,10 +537,11 @@ export const api = {
   },
 
   reports: {
-    get: (startDate?: string, endDate?: string) => {
+    get: (startDate?: string, endDate?: string, vehicleId?: string) => {
       const query = new URLSearchParams();
       if (startDate) query.set('startDate', startDate);
       if (endDate) query.set('endDate', endDate);
+      if (vehicleId) query.set('vehicleId', vehicleId);
       return request<any>(`/reports?${query.toString()}`);
     },
   },

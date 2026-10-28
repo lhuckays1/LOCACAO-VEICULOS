@@ -992,6 +992,7 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
     try {
       const companyId = req.user!.companyId!;
       const data = createFinancialTransactionSchema.parse(req.body);
+      if (data.type === 'EXPENSE' && !data.vehicleId) throw new HttpError(400, 'Toda despesa deve estar vinculada a um veículo.');
       const dueDate = validDate(data.dueDate);
       const competencyDate = validDate(data.competencyDate || data.dueDate);
       const netAmount = money(data.grossAmount).minus(money(data.discountAmount || 0)).plus(money(data.interestAmount || 0));
