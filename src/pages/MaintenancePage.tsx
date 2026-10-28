@@ -16,7 +16,17 @@ import {
   Loader2,
   RefreshCw,
   Trash2,
+  AlertTriangle,
+  BellRing,
 } from 'lucide-react';
+
+type MaintenanceAlert = {
+  id: string; vehicleId: string; vehiclePlate: string; vehicleModel: string;
+  currentMileage: number; serviceName: string; proximaKm: number | null;
+  kmRestante: number | null; nivelAlerta: string;
+};
+
+type MaintenancePlan = { id: string; vehicleId: string | null; nomeServico: string; proximaKm: number | null; intervaloKm: number | null; alertaKmFaltando: number | null; status: string };
 
 type MaintenanceItem = {
   id: string;
@@ -98,6 +108,15 @@ export const MaintenancePage: React.FC = () => {
   const [actionId, setActionId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
+  const [alerts, setAlerts] = useState<MaintenanceAlert[]>([]);
+  const [plans, setPlans] = useState<MaintenancePlan[]>([]);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [isPlanSaving, setIsPlanSaving] = useState(false);
+  const [planVehicleId, setPlanVehicleId] = useState('');
+  const [planName, setPlanName] = useState('');
+  const [planNextKm, setPlanNextKm] = useState(0);
+  const [planIntervalKm, setPlanIntervalKm] = useState(10000);
+  const [planAlertKm, setPlanAlertKm] = useState(1000);
   const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceItem | null>(null);
   const [valorReal, setValorReal] = useState(0);
   const [kmConclusao, setKmConclusao] = useState(0);
@@ -122,11 +141,13 @@ export const MaintenancePage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [listResponse, dashboardResponse, vehiclesResponse] =
+      const [listResponse, dashboardResponse, vehiclesResponse, alertsResponse, plansResponse] =
         await Promise.all([
           api.maintenance.list(),
           api.maintenance.dashboard(),
           api.vehicles.list(),
+          api.maintenance.alerts(),
+          api.maintenance.listPlans(),
         ]);
 
       setMaintenances(listResponse.data || []);
@@ -136,6 +157,8 @@ export const MaintenancePage: React.FC = () => {
         monthCost: dashboardResponse.kpis?.monthCost || 0,
       });
       setVehicles(vehiclesResponse.data || []);
+      setAlerts(alertsResponse.data || []);
+      setPlans(plansResponse.data || []);
     } catch (err: any) {
       toastError(
         'Erro ao carregar manutenção',
@@ -171,6 +194,37 @@ export const MaintenancePage: React.FC = () => {
   const openCreateModal = () => {
     resetForm();
     setIsModalOpen(true);
+  };
+
+  const openPlanModal = () => {
+    const vehicle = vehicles[0];
+    setPlanVehicleId(vehicle?.id || '');
+    setPlanName('Revisão preventiva');
+    setPlanNextKm(vehicle ? vehicle.currentMileage + 10000 : 10000);
+    setPlanIntervalKm(10000);
+    setPlanAlertKm(1000);
+    setIsPlanModalOpen(true);
+  };
+
+  const handleSavePlan = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const vehicle = vehicles.find(item => item.id === planVehicleId);
+    if (!vehicle || !planName.trim() || !Number.isInteger(planNextKm) || planNextKm <= vehicle.currentMileage) {
+      toastError('Dados inválidos', 'Selecione o veículo e informe a próxima revisão acima do KM atual.');
+      return;
+    }
+    setIsPlanSaving(true);
+    try {
+      const existing = plans.find(plan => plan.vehicleId === planVehicleId && plan.status === 'ATIVO' && plan.nomeServico === planName.trim());
+      const payload = { vehicleId: planVehicleId, nomeServico: planName.trim(), proximaKm: planNextKm, intervaloKm: planIntervalKm, ultimaKm: vehicle.currentMileage, alertaKmFaltando: planAlertKm, status: 'ATIVO' };
+      if (existing) await api.maintenance.updatePlan(existing.id, payload);
+      else await api.maintenance.createPlan(payload);
+      toastSuccess('Revisão programada', `Alerta configurado para ${maskMileage(planNextKm)} km.`);
+      setIsPlanModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      toastError('Não foi possível programar a revisão', err?.message || 'Tente novamente.');
+    } finally { setIsPlanSaving(false); }
   };
 
   const openCompleteModal = (maintenance: MaintenanceItem) => {
@@ -397,6 +451,35 @@ export const MaintenancePage: React.FC = () => {
         </Card>
       </div>
 
+      <Card className="border-amber-200">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>Alertas de revisão por quilometragem</CardTitle>
+            <p className="mt-1 text-xs text-slate-500">Os alertas acompanham o odômetro atualizado ao registrar pagamentos e manutenções.</p>
+          </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={openPlanModal} disabled={!vehicles.length}>
+            <BellRing className="h-4 w-4" /> Programar revisão
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {alerts.length === 0 ? <p className="text-sm text-slate-500">Nenhuma revisão próxima. Programe uma revisão para receber aviso antes de atingir o KM previsto.</p> : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {alerts.filter(alert => alert.nivelAlerta !== 'OK').map(alert => {
+                const overdue = alert.nivelAlerta === 'VENCIDA';
+                return <div key={alert.id} className={`flex items-start gap-3 rounded-lg border p-3 ${overdue ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'}`}>
+                  <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? 'text-rose-600' : 'text-amber-600'}`} />
+                  <div className="min-w-0 text-sm">
+                    <div className="font-bold text-slate-900">{alert.vehiclePlate} · {alert.serviceName}</div>
+                    <div className="mt-1 text-xs text-slate-600">Atual: {maskMileage(alert.currentMileage)} km · Revisão: {alert.proximaKm == null ? '—' : `${maskMileage(alert.proximaKm)} km`}</div>
+                    <div className={`mt-1 text-xs font-semibold ${overdue ? 'text-rose-700' : 'text-amber-800'}`}>{alert.kmRestante != null && (alert.kmRestante <= 0 ? `Revisão vencida há ${maskMileage(Math.abs(alert.kmRestante))} km` : `Faltam ${maskMileage(alert.kmRestante)} km`)}</div>
+                  </div>
+                </div>;
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Ordens de Serviço Registradas</CardTitle>
@@ -598,6 +681,31 @@ export const MaintenancePage: React.FC = () => {
               <CheckCircle2 className="w-3.5 h-3.5" />
               Confirmar e lançar no financeiro
             </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={isPlanModalOpen} onClose={() => !isPlanSaving && setIsPlanModalOpen(false)} title="Programar revisão preventiva" description="O sistema acompanha o odômetro e avisa quando estiver dentro da faixa configurada." maxWidth="lg">
+        <form className="space-y-4" onSubmit={handleSavePlan}>
+          <Select label="VEÍCULO" value={planVehicleId} onChange={event => {
+            const id = event.target.value;
+            setPlanVehicleId(id);
+            const vehicle = vehicles.find(item => item.id === id);
+            if (vehicle) setPlanNextKm(vehicle.currentMileage + planIntervalKm);
+          }} required>
+            <option value="">Selecione um veículo</option>
+            {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} — {vehicle.brand} {vehicle.model} (atual: {maskMileage(vehicle.currentMileage)} km)</option>)}
+          </Select>
+          <Input label="SERVIÇO / REVISÃO" value={planName} onChange={event => setPlanName(event.target.value)} placeholder="Ex.: Troca de óleo" required minLength={3} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Input label="PRÓXIMO KM" type="number" min={1} value={planNextKm} onChange={event => setPlanNextKm(Number(event.target.value) || 0)} required />
+            <Input label="INTERVALO (KM)" type="number" min={1} value={planIntervalKm} onChange={event => { const interval = Number(event.target.value) || 0; setPlanIntervalKm(interval); const vehicle = vehicles.find(item => item.id === planVehicleId); if (vehicle) setPlanNextKm(vehicle.currentMileage + interval); }} required />
+            <Input label="AVISAR COM (KM)" type="number" min={1} value={planAlertKm} onChange={event => setPlanAlertKm(Number(event.target.value) || 0)} required />
+          </div>
+          <p className="text-xs text-slate-500">O alerta aparece na aba Manutenção quando faltar até {maskMileage(planAlertKm)} km e permanece visível se a revisão passar do limite.</p>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsPlanModalOpen(false)} disabled={isPlanSaving}>Cancelar</Button>
+            <Button type="submit" variant="primary" size="sm" isLoading={isPlanSaving}>Salvar revisão</Button>
           </div>
         </form>
       </Modal>

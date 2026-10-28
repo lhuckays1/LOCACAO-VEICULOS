@@ -310,6 +310,21 @@ export const api = {
         topVehicles: any[];
       }>('/maintenance/dashboard'),
 
+    alerts: () => request<{ total: number; data: any[] }>('/maintenance/alerts'),
+
+    listPlans: (vehicleId?: string) => {
+      const query = vehicleId ? `?vehicleId=${encodeURIComponent(vehicleId)}` : '';
+      return request<{ total: number; data: any[] }>(`/maintenance/plans/list${query}`);
+    },
+
+    createPlan: (data: any) => request<{ message: string; data: any }>('/maintenance/plans', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+
+    updatePlan: (id: string, data: any) => request<{ message: string; data: any }>(`/maintenance/plans/${id}`, {
+      method: 'PUT', body: JSON.stringify(data),
+    }),
+
     create: (data: any) =>
       request<{ message: string; data: any }>('/maintenance', {
         method: 'POST',
