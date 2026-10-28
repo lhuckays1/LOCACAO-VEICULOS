@@ -6,7 +6,7 @@ import { HttpError } from '../utils/api-error.js';
 import { money, validDate } from '../services/financial.js';
 
 const policySchema = z.object({
-  vehicleId: z.string().min(1), insurer: z.string().trim().min(2), policyNumber: z.string().trim().min(2),
+  vehicleId: z.string().min(1), insurer: z.string().trim().min(2), insurerId: z.string().optional().nullable(), policyNumber: z.string().trim().min(2),
   coverageType: z.string().trim().min(2), totalPremium: z.coerce.number().positive(), installmentCount: z.coerce.number().int().min(1).max(24),
   startDate: z.string().min(10), endDate: z.string().min(10), firstDueDate: z.string().min(10),
   categoryId: z.string().optional().nullable(), notes: z.string().optional().nullable(),
@@ -38,6 +38,12 @@ export class VehicleInsuranceController {
       const data = policySchema.parse(req.body);
       const vehicle = await prisma.vehicle.findFirst({ where: { id: data.vehicleId, companyId } });
       if (!vehicle) throw new HttpError(400, 'Veículo inválido para esta empresa.');
+      let insurerName = data.insurer;
+      if (data.insurerId) {
+        const insurer = await prisma.supplier.findFirst({ where: { id: data.insurerId, companyId, ativo: true } });
+        if (!insurer) throw new HttpError(400, 'Selecione uma seguradora ativa e válida.');
+        insurerName = insurer.nome;
+      }
       if (data.categoryId) {
         const category = await prisma.financialCategory.findFirst({ where: { id: data.categoryId, companyId, type: 'EXPENSE', active: true } });
         if (!category) throw new HttpError(400, 'Selecione uma categoria de despesa ativa.');
@@ -47,7 +53,7 @@ export class VehicleInsuranceController {
       const dates = [data.startDate, data.endDate, data.firstDueDate].map(value => validDate(value));
       const policy = await prisma.$transaction(async tx => {
         const record = await tx.vehicleInsurance.create({ data: {
-          companyId, vehicleId: vehicle.id, insurer: data.insurer.toUpperCase(), policyNumber: data.policyNumber,
+          companyId, vehicleId: vehicle.id, insurer: insurerName.toUpperCase(), policyNumber: data.policyNumber,
           coverageType: data.coverageType.toUpperCase(), totalPremium: money(data.totalPremium), installmentCount: data.installmentCount,
           startDate: dates[0], endDate: dates[1], firstDueDate: dates[2], notes: data.notes || null,
         } });
