@@ -1,11 +1,33 @@
-import React from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import React, { useEffect, useState } from 'react';
+import { Download, FileBarChart2, RefreshCw } from 'lucide-react';
+import { api } from '../services/api';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
+import { maskCurrency, formatDate } from '../utils/formatters';
+import { useToast } from '../components/ui/Toast';
 
-export const ReportsPage: React.FC = () => (
-  <Card>
-    <CardHeader><CardTitle>Relatórios</CardTitle></CardHeader>
-    <CardContent>
-      <p className="text-sm text-slate-600">Este módulo está em desenvolvimento e ainda não está disponível.</p>
-    </CardContent>
-  </Card>
-);
+const monthStart = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-01`; };
+const today = () => new Date().toISOString().slice(0,10);
+export const ReportsPage: React.FC = () => {
+  const { error } = useToast();
+  const [startDate, setStartDate] = useState(monthStart());
+  const [endDate, setEndDate] = useState(today());
+  const [report, setReport] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const load = async () => { setLoading(true); try { setReport(await api.reports.get(startDate,endDate)); } catch(e:any) { error('Erro ao gerar relatórios',e?.message||'Tente novamente.'); } finally { setLoading(false); } };
+  useEffect(()=>{void load();},[]);
+  const exportCsv = () => {
+    if (!report) return;
+    const lines = [['Relatório de frota',`${startDate} a ${endDate}`],[],['Indicador','Valor'],['Veículos',report.summary.vehicles],['Locações',report.summary.rentals],['Receita prevista',report.summary.rentalRevenue],['Multas',report.summary.fines],['Valor de multas',report.summary.fineAmount],['Sinistros',report.summary.incidents],['Vistorias',report.summary.inspections],['Manutenções',report.summary.maintenance],['Despesas',report.summary.expenses]];
+    const csv = lines.map(row=>row.map(value=>`"${String(value??'').replaceAll('"','""')}"`).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})); const link=document.createElement('a');link.href=url;link.download=`relatorio-frota-${startDate}-${endDate}.csv`;link.click();URL.revokeObjectURL(url);
+  };
+  const summary = report?.summary;
+  const metrics = summary ? [['Veículos na frota',summary.vehicles],['Locações no período',summary.rentals],['Receita prevista',maskCurrency(summary.rentalRevenue)],['Despesas registradas',maskCurrency(summary.expenses)],['Multas / valor',`${summary.fines} · ${maskCurrency(summary.fineAmount)}`],['Sinistros',summary.incidents],['Vistorias',summary.inspections],['Manutenções',summary.maintenance]] : [];
+  return <div className="space-y-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="flex items-center gap-2 text-xl font-black text-slate-900"><FileBarChart2 className="h-6 w-6 text-emerald-600"/>Relatórios da frota</h1><p className="mt-1 text-xs text-slate-500">Resumo operacional e financeiro consolidado por período.</p></div><div className="flex gap-2"><Button variant="outline" onClick={load} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading?'animate-spin':''}`}/>Atualizar</Button><Button variant="primary" onClick={exportCsv} disabled={!report}><Download className="mr-2 h-4 w-4"/>Exportar CSV</Button></div></div>
+  <Card><CardHeader><CardTitle>Período do relatório</CardTitle></CardHeader><CardContent><div className="flex flex-col gap-3 sm:flex-row sm:items-end"><Input label="DE" type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}/><Input label="ATÉ" type="date" value={endDate} onChange={e=>setEndDate(e.target.value)}/><Button variant="primary" onClick={load} disabled={loading}>Gerar relatório</Button></div></CardContent></Card>
+  {loading&&!report?<p className="p-8 text-center text-slate-500">Gerando relatório...</p>:report&&<><p className="text-xs text-slate-500">Período: {formatDate(report.period.startDate)} a {formatDate(report.period.endDate)}</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label,value]:any)=><Card key={label}><CardContent className="p-4"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><b className="mt-1 block text-2xl text-slate-900">{value}</b></CardContent></Card>)}</div>
+  <Card><CardHeader><CardTitle>Locações no período ({report.rentals.length})</CardTitle></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Data</th><th className="p-3">Contrato / cliente</th><th className="p-3">Veículo</th><th className="p-3">Status</th><th className="p-3">Valor previsto</th></tr></thead><tbody className="divide-y">{report.rentals.slice(0,30).map((r:any)=><tr key={r.id}><td className="p-3">{formatDate(r.startDate)}</td><td className="p-3">{r.rentalNumber}<div className="text-xs text-slate-500">{r.client?.name}</div></td><td className="p-3">{r.vehicle?.plate}</td><td className="p-3">{r.status}</td><td className="p-3">{maskCurrency(r.amount)}</td></tr>)}{!report.rentals.length&&<tr><td className="p-6 text-center text-slate-500" colSpan={5}>Nenhuma locação nesse período.</td></tr>}</tbody></table></div></CardContent></Card>
+  <div className="grid gap-4 xl:grid-cols-2"><Card><CardHeader><CardTitle>Multas e sinistros</CardTitle></CardHeader><CardContent className="space-y-3">{[...report.fines.map((f:any)=>({id:f.id,date:f.date,vehicle:f.vehicle?.plate,title:`Multa · ${f.description}`,amount:maskCurrency(f.amount)})),...report.incidents.map((i:any)=>({id:i.id,date:i.date,vehicle:i.vehicle?.plate,title:`Sinistro · ${i.type}: ${i.description}`,amount:i.status}))].slice(0,12).map((row:any)=><div key={row.id} className="flex justify-between gap-3 border-b pb-2 text-sm"><div><b>{row.vehicle} · {row.title}</b><div className="text-xs text-slate-500">{formatDate(row.date)}</div></div><span className="shrink-0 text-xs text-slate-600">{row.amount}</span></div>)}{!report.fines.length&&!report.incidents.length&&<p className="text-sm text-slate-500">Sem ocorrências no período.</p>}</CardContent></Card><Card><CardHeader><CardTitle>Manutenções e vistorias</CardTitle></CardHeader><CardContent className="space-y-3">{[...report.maintenance.map((m:any)=>({id:m.id,date:m.dataAgendamento,vehicle:m.vehicle?.plate,title:`Manutenção · ${m.titulo}`,status:m.status})),...report.inspections.map((i:any)=>({id:i.id,date:i.createdAt,vehicle:i.vehicle?.plate,title:`Vistoria ${i.type==='CHECKOUT'?'de saída':'de retorno'} · ${i.rental?.rentalNumber||''}`,status:`${i.mileage.toLocaleString('pt-BR')} km`}))].slice(0,12).map((row:any)=><div key={row.id} className="flex justify-between gap-3 border-b pb-2 text-sm"><div><b>{row.vehicle} · {row.title}</b><div className="text-xs text-slate-500">{formatDate(row.date)}</div></div><span className="shrink-0 text-xs text-slate-600">{row.status}</span></div>)}{!report.maintenance.length&&!report.inspections.length&&<p className="text-sm text-slate-500">Sem registros no período.</p>}</CardContent></Card></div></>}</div>;
+};

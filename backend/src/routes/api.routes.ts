@@ -11,6 +11,8 @@ import rentalsRoutes from './rentals.routes.js';
 import financialRoutes from './financial.routes.js';
 import maintenanceRoutes from './maintenance.routes.js';
 import inspectionsRoutes from './inspections.routes.js';
+import fleetRecordsRoutes from './fleet-records.routes.js';
+import reportsRoutes from './reports.routes.js';
 import userRoutes from './user.routes.js';
 
 const apiRouter = Router();
@@ -42,6 +44,8 @@ apiRouter.use('/rentals', rentalsRoutes);
 apiRouter.use('/financial', financialRoutes);
 apiRouter.use('/maintenance', maintenanceRoutes);
 apiRouter.use('/inspections', inspectionsRoutes);
+apiRouter.use('/records', fleetRecordsRoutes);
+apiRouter.use('/reports', reportsRoutes);
 apiRouter.use('/users', userRoutes);
 
 /**

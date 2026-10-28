@@ -1,11 +1,3 @@
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
-
-export const FinesPage: React.FC = () => (
-  <Card>
-    <CardHeader><CardTitle>Multas e infrações</CardTitle></CardHeader>
-    <CardContent>
-      <p className="text-sm text-slate-600">Este módulo está em desenvolvimento e ainda não está disponível.</p>
-    </CardContent>
-  </Card>
-);
+import { FleetRegisterPage } from '../components/FleetRegisterPage';
+export const FinesPage: React.FC = () => <FleetRegisterPage kind="fines" />;

@@ -510,9 +510,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+    update: (id: string, data: any) => request<{ message: string; data: any }>(`/inspections/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request<{ message: string; data: any }>(`/inspections/${id}`, {
       method: 'DELETE',
     }),
+  },
+
+  fleetRecords: {
+    list: (kind: 'fines' | 'incidents', params?: { search?: string; status?: string; vehicleId?: string; startDate?: string; endDate?: string }) => {
+      const query = new URLSearchParams();
+      Object.entries(params || {}).forEach(([key, value]) => { if (value && !(key === 'status' && value === 'ALL')) query.set(key, value); });
+      const suffix = query.toString();
+      return request<{ total: number; data: any[] }>(`/records/${kind}${suffix ? `?${suffix}` : ''}`);
+    },
+    create: (kind: 'fines' | 'incidents', data: any) => request<{ message: string; data: any }>(`/records/${kind}`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (kind: 'fines' | 'incidents', id: string, data: any) => request<{ message: string; data: any }>(`/records/${kind}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (kind: 'fines' | 'incidents', id: string) => request<{ message: string }>(`/records/${kind}/${id}`, { method: 'DELETE' }),
+  },
+
+  reports: {
+    get: (startDate?: string, endDate?: string) => {
+      const query = new URLSearchParams();
+      if (startDate) query.set('startDate', startDate);
+      if (endDate) query.set('endDate', endDate);
+      return request<any>(`/reports?${query.toString()}`);
+    },
   },
 
 
