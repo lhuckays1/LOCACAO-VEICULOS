@@ -154,7 +154,10 @@ export class PersistedMaintenanceController extends PrismaMaintenanceController 
       const kmRestante = proximaKm === null ? null : proximaKm - vehicle.currentMileage;
       const diasRestantes = proximaData ? Math.ceil((proximaData.getTime() - Date.now()) / 86400000) : null;
       const rank = (value: number | null, threshold: number) => value === null ? 0 : value <= 0 ? 3 : value <= threshold ? 2 : value <= threshold * 2 ? 1 : 0;
-      const severity = Math.max(rank(kmRestante, plan.alertaKmFaltando ?? 1000), rank(diasRestantes, plan.alertaDiasFaltando ?? 15));
+      const severity = Math.max(
+        proximaKm !== null ? rank(kmRestante, plan.alertaKmFaltando ?? 1000) : 0,
+        proximaData ? rank(diasRestantes, plan.alertaDiasFaltando ?? 15) : 0,
+      );
       alerts.push({ id: `${vehicle.id}-${plan.id}`, vehicleId: vehicle.id, vehiclePlate: vehicle.plate,
         vehicleModel: `${vehicle.brand} ${vehicle.model}`, currentMileage: vehicle.currentMileage, serviceName: plan.nomeServico,
         tipo: proximaKm !== null && proximaData ? 'AMBOS' : proximaKm !== null ? 'KM' : 'DATA', proximaKm, kmRestante,
