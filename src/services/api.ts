@@ -262,6 +262,10 @@ export const api = {
 
   // Maintenance Module
   maintenance: {
+    listSuppliers: () => request<{ total: number; data: any[] }>('/maintenance/suppliers/list'),
+    createSupplier: (data: any) => request<{ message: string; data: any }>('/maintenance/suppliers', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
     list: (params?: {
       status?: string;
       type?: string;
