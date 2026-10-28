@@ -39,6 +39,8 @@ export const createFinancialTransactionSchema = z.object({
   installmentNumber: z.number().int().positive().optional().nullable(),
   totalInstallments: z.number().int().positive().optional().nullable(),
   notes: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.type === 'EXPENSE' && !data.vehicleId) ctx.addIssue({ code: 'custom', path: ['vehicleId'], message: 'Toda despesa deve estar vinculada a um veículo.' });
 });
 
 export const updateFinancialTransactionSchema = z.object({

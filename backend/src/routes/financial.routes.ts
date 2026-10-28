@@ -5,6 +5,7 @@ import { financialController } from '../controllers/financial.controller.js';
 import { authMiddleware, requireCompany } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/role.middleware.js';
 import { uppercaseMiddleware } from '../middlewares/uppercase.middleware.js';
+import vehicleInsuranceRoutes from './vehicle-insurance.routes.js';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.use(async (req: AuthenticatedRequest, _res, next) => {
     next();
   } catch (err) { next(err); }
 });
+router.use('/insurances', vehicleInsuranceRoutes);
 
 // Dashboard & KPIs
 router.get('/dashboard', (req, res, next) => financialController.getDashboard(req, res, next));

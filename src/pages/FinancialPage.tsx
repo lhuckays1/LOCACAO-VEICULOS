@@ -12,6 +12,7 @@ import { SettlementModal } from '../components/financial/SettlementModal';
 import { NewTransactionModal } from '../components/financial/NewTransactionModal';
 import { TransactionDetailsModal } from '../components/financial/TransactionDetailsModal';
 import { FinancialCategoriesModal } from '../components/financial/FinancialCategoriesModal';
+import { VehicleInsurancePanel } from '../components/financial/VehicleInsurancePanel';
 import {
   CircleDollarSign,
   TrendingUp,
@@ -35,9 +36,10 @@ import {
   FileSpreadsheet,
   RefreshCw,
   ExternalLink,
+  ShieldCheck,
 } from 'lucide-react';
 
-type FinancialTab = 'DASHBOARD' | 'RECEBER' | 'PAGAR' | 'FLUXO_CAIXA' | 'INADIMPLENCIA';
+type FinancialTab = 'DASHBOARD' | 'RECEBER' | 'PAGAR' | 'SEGUROS' | 'FLUXO_CAIXA' | 'INADIMPLENCIA';
 
 const financialStatusLabel = (status?: string): string => {
   const labels: Record<string, string> = {
@@ -280,7 +282,7 @@ export const FinancialPage: React.FC = () => {
             className="text-xs gap-1.5"
           >
             <Tag className="w-3.5 h-3.5 text-slate-500" />
-            Categorias & Centros
+            Configurações: categorias
           </Button>
 
           <Button
@@ -318,6 +320,14 @@ export const FinancialPage: React.FC = () => {
         >
           <TrendingUp className="w-3.5 h-3.5" />
           DASHBOARD & RESULTADO
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('SEGUROS')}
+          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'SEGUROS' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" /> SEGUROS DA FROTA
         </button>
 
         <button
@@ -1322,6 +1332,8 @@ export const FinancialPage: React.FC = () => {
           </Card>
         </div>
       )}
+
+      {activeTab === 'SEGUROS' && <VehicleInsurancePanel />}
 
       {/* ======================================================== */}
       {/* MODALS                                                   */}

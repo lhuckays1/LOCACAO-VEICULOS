@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { vehicleInsuranceController } from '../controllers/vehicle-insurance.controller.js';
+import { authMiddleware, requireCompany } from '../middlewares/auth.middleware.js';
+import { authorize } from '../middlewares/role.middleware.js';
+const router = Router();
+router.use(authMiddleware, requireCompany);
+router.get('/', (req, res, next) => vehicleInsuranceController.list(req, res, next));
+router.post('/', authorize(['ADMIN', 'MANAGER', 'FINANCIAL']), (req, res, next) => vehicleInsuranceController.create(req, res, next));
+router.put('/:id/status', authorize(['ADMIN', 'MANAGER', 'FINANCIAL']), (req, res, next) => vehicleInsuranceController.updateStatus(req, res, next));
+export default router;

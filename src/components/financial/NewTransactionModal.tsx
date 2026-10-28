@@ -48,6 +48,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       setCompetencyDate(today);
       setDescription('');
       setGrossAmount(0);
+      setVehicleId('');
       setNotes('');
       setOrigin(defaultType === 'EXPENSE' ? 'MAINTENANCE' : 'EXTRA_FEE');
 
@@ -102,6 +103,10 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     }
     if (grossAmount <= 0) {
       addToast({ title: 'VALOR INVÁLIDO', message: 'O valor deve ser maior que zero.', type: 'warning' });
+      return;
+    }
+    if (type === 'EXPENSE' && !vehicleId) {
+      addToast({ title: 'VEÍCULO OBRIGATÓRIO', message: 'Selecione o veículo relacionado à despesa.', type: 'warning' });
       return;
     }
 
@@ -275,9 +280,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">VEÍCULO VINCULADO (OPCIONAL)</label>
-            <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-              <option value="">NENHUM VEÍCULO ESPECÍFICO</option>
+            <label className="text-xs font-bold text-slate-700 block mb-1">VEÍCULO VINCULADO {type === 'EXPENSE' ? '*' : '(OPCIONAL)'}</label>
+            <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} required={type === 'EXPENSE'}>
+              <option value="">{type === 'EXPENSE' ? 'SELECIONE O VEÍCULO' : 'NENHUM VEÍCULO ESPECÍFICO'}</option>
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.plate} - {v.brand} {v.model}
