@@ -136,9 +136,12 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: any) {
+      const validationMessage = Array.isArray(err?.data?.details)
+        ? err.data.details.map((detail: { field?: string; message?: string }) => detail.message).filter(Boolean).join(' ')
+        : '';
       addToast({
         title: 'ERRO AO REGISTRAR',
-        message: err.message || 'Falha ao cadastrar lançamento financeiro.',
+        message: validationMessage || err.message || 'Falha ao cadastrar lançamento financeiro.',
         type: 'danger',
       });
     } finally {

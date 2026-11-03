@@ -11,6 +11,7 @@ export interface ToastMessage {
 
 interface ToastContextType {
   toast: (options: Omit<ToastMessage, 'id'>) => void;
+  addToast: (options: { type: ToastMessage['type'] | 'danger'; title: string; message?: string }) => void;
   success: (title: string, message?: string) => void;
   error: (title: string, message?: string) => void;
   warning: (title: string, message?: string) => void;
@@ -39,6 +40,8 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const error = (title: string, message?: string) => toast({ type: 'error', title, message });
   const warning = (title: string, message?: string) => toast({ type: 'warning', title, message });
   const info = (title: string, message?: string) => toast({ type: 'info', title, message });
+  const addToast: ToastContextType['addToast'] = (options) =>
+    toast({ ...options, type: options.type === 'danger' ? 'error' : options.type });
 
   const icons = {
     success: <CheckCircle2 className="w-5 h-5 text-emerald-600" />,
@@ -55,7 +58,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   return (
-    <ToastContext.Provider value={{ toast, success, error, warning, info }}>
+    <ToastContext.Provider value={{ toast, addToast, success, error, warning, info }}>
       {children}
       {/* Toast Floating Container */}
       <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none px-4 sm:px-0">
