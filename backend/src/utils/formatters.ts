@@ -120,7 +120,7 @@ export function deepTransformToUppercase<T>(data: T): T {
   if (typeof data === 'object') {
     const result: Record<string, any> = {};
     for (const [key, value] of Object.entries(data)) {
-      if (EXCLUDED_UPPERCASE_KEYS.has(key)) {
+      if (EXCLUDED_UPPERCASE_KEYS.has(key) || key.endsWith('Id') || key.endsWith('Ids')) {
         result[key] = value;
       } else if (typeof value === 'string') {
         result[key] = value.toUpperCase();
