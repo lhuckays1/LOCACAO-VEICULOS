@@ -7,6 +7,7 @@ import { Badge } from '../ui/Badge';
 import { maskCurrency, formatDate } from '../../utils/formatters';
 import { api } from '../../services/api';
 import { useToast } from '../ui/Toast';
+import { translateFinancialLabel, translateFinancialOrigin } from '../../utils/formatters';
 import { CheckCircle2, AlertTriangle, Calendar, DollarSign, FileText } from 'lucide-react';
 
 interface SettlementModalProps {
@@ -126,7 +127,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div>
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                {transaction.origin} • {transaction.categoryName || 'GERAL'}
+                {translateFinancialOrigin(transaction.origin)} • {translateFinancialLabel(transaction.categoryName || 'GERAL')}
               </span>
               <h3 className="text-sm font-bold text-slate-900 mt-0.5">{transaction.description}</h3>
               {transaction.clientName && (

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { translateRole } from '../utils/formatters';
 import {
   LayoutDashboard,
   Users,
@@ -54,7 +55,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { id: 'DASHBOARD' as NavigationTab, label: 'DASHBOARD', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'DASHBOARD' as NavigationTab, label: 'PAINEL', icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'CLIENTES' as NavigationTab, label: 'CLIENTES', icon: <Users className="w-4 h-4" /> },
     { id: 'VEICULOS' as NavigationTab, label: 'VEÍCULOS', icon: <Car className="w-4 h-4" /> },
     { id: 'LOCACOES' as NavigationTab, label: 'LOCAÇÕES', icon: <KeyRound className="w-4 h-4" /> },
@@ -160,7 +161,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                  {user?.role || 'OPERATOR'}
+                  {translateRole(user?.role || 'OPERATOR')}
                 </span>
               </div>
             </div>
@@ -203,7 +204,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   {user?.name}
                 </span>
                 <span className="block text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-                  {user?.role}
+                  {translateRole(user?.role)}
                 </span>
               </div>
             </div>

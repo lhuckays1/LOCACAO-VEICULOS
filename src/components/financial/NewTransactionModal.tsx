@@ -6,6 +6,7 @@ import { Select } from '../ui/Select';
 import { api } from '../../services/api';
 import { useToast } from '../ui/Toast';
 import { PlusCircle } from 'lucide-react';
+import { translateFinancialLabel } from '../../utils/formatters';
 
 interface NewTransactionModalProps {
   isOpen: boolean;
@@ -227,9 +228,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             <Select value={origin} onChange={(e) => setOrigin(e.target.value)}>
               {type === 'EXPENSE' ? (
                 <>
-                  <option value="MAINTENANCE">MANUTENÇÃO & OFICINA</option>
-                  <option value="INSURANCE">SEGURO & RASTREADOR</option>
-                  <option value="TAX">IPVA, LICENCIAMENTO & TAXAS</option>
+                  <option value="MAINTENANCE">MANUTENÇÃO E OFICINA</option>
+                  <option value="INSURANCE">SEGURO E RASTREADOR</option>
+                  <option value="TAX">IPVA, LICENCIAMENTO E TAXAS</option>
                   <option value="FUEL">COMBUSTÍVEL</option>
                   <option value="SALARY">FOLHA DE PAGAMENTO / PRÓ-LABORE</option>
                   <option value="OFFICE">ADMINISTRATIVO / ESCRITÓRIO</option>
@@ -240,7 +241,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                 <>
                   <option value="RENTAL">LOCAÇÃO RECORRENTE</option>
                   <option value="EXTRA_FEE">TAXA EXTRA / KM EXCEDENTE</option>
-                  <option value="DAMAGE">AVARIA & RESSARCIMENTO</option>
+                  <option value="DAMAGE">AVARIA E RESSARCIMENTO</option>
                   <option value="FINE">MULTA REPASSADA</option>
                   <option value="SALE">VENDA DE ATIVO / VEÍCULO</option>
                   <option value="OTHER">OUTRA RECEITA</option>
@@ -264,7 +265,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
               <option value="">SELECIONE UMA CATEGORIA</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {translateFinancialLabel(c.name)}
                 </option>
               ))}
             </Select>

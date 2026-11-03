@@ -154,9 +154,9 @@ export const SuperAdminAdministratorsPage: React.FC = () => {
       string,
       string
     > = {
-      SUPER_ADMIN: 'Super Admin',
+      SUPER_ADMIN: 'Superadministrador',
       ADMIN: 'Administrador',
-      MANAGER: 'Gerente',
+      MANAGER: 'Gestor',
       OPERATOR: 'Operador',
       FINANCIAL: 'Financeiro',
     };

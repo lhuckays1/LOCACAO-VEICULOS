@@ -15,7 +15,7 @@ type Props = { kind: Kind };
 const today = () => new Date().toISOString().slice(0, 10);
 const statuses: Record<Kind, [string, string][]> = {
   fines: [['PENDING', 'Pendente'], ['PAID', 'Paga'], ['REIMBURSED', 'Reembolsada'], ['CONTESTED', 'Em recurso']],
-  incidents: [['REPORTED', 'Registrado'], ['UNDER_ANALYSIS', 'Em análise'], ['IN_REPAIR', 'Em reparo'], ['INSURANCE_CLAIMED', 'Acionado seguro'], ['RESOLVED', 'Resolvido']],
+  incidents: [['REPORTED', 'Registrado'], ['UNDER_ANALYSIS', 'Em análise'], ['IN_REPAIR', 'Em reparo'], ['INSURANCE_CLAIMED', 'Seguro acionado'], ['RESOLVED', 'Resolvido']],
 };
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100';
 

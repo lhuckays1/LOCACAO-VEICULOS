@@ -937,7 +937,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
                                   {formatDate(payment.dataPagamento || '')}
                                 </span>
                                 {payment.formaPagamento && (
-                                  <div className="text-[10px] text-slate-400">Via {payment.formaPagamento}</div>
+                                  <div className="text-[10px] text-slate-400">Por {getPaymentMethodLabel(payment.formaPagamento)}</div>
                                 )}
                               </div>
                             ) : (
@@ -1222,7 +1222,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
         >
           <form onSubmit={handleSaveCaucao} className="space-y-3 text-xs">
             <Select
-              label="STATUS DO CAUÇÃO"
+              label="STATUS DA CAUÇÃO"
               value={caucaoStatus}
               onChange={(e) => setCaucaoStatus(e.target.value as DepositStatus)}
               required
@@ -1242,7 +1242,7 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
             />
 
             <Input
-              label="OBSERVAÇÕES DO CAUÇÃO"
+              label="OBSERVAÇÕES DA CAUÇÃO"
               placeholder="Ex: Pago via PIX no ato da retirada, ou retido por avaria."
               value={caucaoNotes}
               onChange={(e) => setCaucaoNotes(e.target.value)}

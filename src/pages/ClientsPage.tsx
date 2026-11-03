@@ -281,7 +281,7 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
         <div>
           <h1 className="text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
             <Users className="w-6 h-6 text-emerald-600" />
-            Gestão de Clientes & Motoristas
+            Gestão de clientes e motoristas
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Cadastro completo de pessoas físicas, jurídicas, motoristas de aplicativo e histórico de locações.
@@ -720,7 +720,7 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                 <h4 className="font-bold uppercase text-slate-800 flex items-center gap-1.5">
                   <Phone className="w-4 h-4 text-emerald-600" />
-                  Contato & Endereço
+                  Contato e endereço
                 </h4>
                 <div className="space-y-1 text-slate-600">
                   <p><strong>E-mail:</strong> {viewingClient.email}</p>
@@ -736,11 +736,11 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
                 </div>
               </div>
 
-              {/* Documentos & Habilitação */}
+              {/* Documentos e habilitação */}
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                 <h4 className="font-bold uppercase text-slate-800 flex items-center gap-1.5">
                   <FileText className="w-4 h-4 text-indigo-600" />
-                  Documentos & CNH
+                  Documentos e CNH
                 </h4>
                 <div className="space-y-1 text-slate-600">
                   <p><strong>RG:</strong> {viewingClient.rg || 'Não informado'}</p>

@@ -1,8 +1,18 @@
 /**
  * Central API Client for FROTA CRM
  */
+import { repairMojibake } from '../utils/formatters';
 
 const BASE_URL = '/api';
+
+function normalizeApiText<T>(value: T): T {
+  if (typeof value === 'string') return repairMojibake(value) as T;
+  if (Array.isArray(value)) return value.map(normalizeApiText) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeApiText(item)])) as T;
+  }
+  return value;
+}
 
 export class ApiError extends Error {
   statusCode: number;
@@ -71,7 +81,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const contentType = response.headers.get('content-type');
   let result: any = null;
   if (contentType && contentType.includes('application/json')) {
-    result = await response.json();
+    result = normalizeApiText(await response.json());
   } else {
     result = await response.text();
   }

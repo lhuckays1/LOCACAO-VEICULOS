@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from './Button';
+import { translateStatus } from '../../utils/formatters';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: string;
@@ -61,6 +62,9 @@ export const Badge: React.FC<BadgeProps> = ({ className, variant = 'default', ch
     PF: 'bg-indigo-50 text-indigo-700 border-indigo-200',
     PJ: 'bg-teal-50 text-teal-700 border-teal-200',
   };
+  const label = typeof children === 'string' && (children === variant || /^[A-Z_]+$/.test(children))
+    ? translateStatus(children)
+    : children;
 
   return (
     <span
@@ -71,7 +75,7 @@ export const Badge: React.FC<BadgeProps> = ({ className, variant = 'default', ch
       )}
       {...props}
     >
-      {children}
+      {label}
     </span>
   );
 };

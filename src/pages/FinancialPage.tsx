@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { StatCard } from '../components/ui/StatCard';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
-import { maskCurrency, formatDate } from '../utils/formatters';
+import { maskCurrency, formatDate, repairMojibake, translateFinancialLabel } from '../utils/formatters';
 import { useToast } from '../components/ui/Toast';
 import { SettlementModal } from '../components/financial/SettlementModal';
 import { NewTransactionModal } from '../components/financial/NewTransactionModal';
@@ -70,12 +70,7 @@ const paymentMethodLabel = (method?: string): string => {
 const displayFinancialDescription = (description?: string): string => {
   if (!description) return 'Sem descrição';
 
-  // Corrige registros antigos que foram gravados com encoding incorreto.
-  return description
-    .replace(/LocaÃ§Ã£o/g, 'Locação')
-    .replace(/LOCAÃ‡ÃƒO/g, 'LOCAÇÃO')
-    .replace(/Ã§Ã£o/g, 'ção')
-    .replace(/Ã‡ÃƒO/g, 'ÇÃO');
+  return repairMojibake(description);
 };
 
 export const FinancialPage: React.FC = () => {
@@ -1000,7 +995,7 @@ export const FinancialPage: React.FC = () => {
                               className="w-1.5 h-1.5 rounded-full"
                               style={{ backgroundColor: tx.categoryColor || '#475569' }}
                             />
-                            {tx.categoryName}
+                            {translateFinancialLabel(tx.categoryName)}
                           </span>
                         </td>
                         <td className="px-4 py-3">

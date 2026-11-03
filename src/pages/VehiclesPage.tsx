@@ -1161,7 +1161,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                     <th className="px-4 py-3.5">Categoria / Ano</th>
                     <th className="px-4 py-3.5">Quilometragem</th>
                     <th className="px-4 py-3.5">Tarifas (Semanal / Mensal)</th>
-                    <th className="px-4 py-3.5">Rastreador & Seguro</th>
+                    <th className="px-4 py-3.5">Rastreador e seguro</th>
                     <th className="px-4 py-3.5">Status</th>
                     <th className="px-5 py-3.5 text-right">Ações</th>
                   </tr>
@@ -1656,7 +1656,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
             <div className="flex items-center gap-2 pb-1 border-b border-emerald-200">
               <DollarSign className="w-4 h-4 text-emerald-700" />
               <h3 className="text-xs font-black uppercase tracking-wider text-emerald-950">
-                3. Dados Financeiros & Tarifas de Locação
+                3. Dados financeiros e tarifas de locação
               </h3>
             </div>
 
@@ -1727,7 +1727,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
             </div>
           </div>
 
-          {/* SEÇÃO 4: OUTROS / EQUIPAMENTOS & OBSERVAÇÕES */}
+          {/* SEÇÃO 4: OUTROS / EQUIPAMENTOS E OBSERVAÇÕES */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center gap-2 pb-1 border-b border-slate-200">
               <Shield className="w-4 h-4 text-indigo-600" />
@@ -1738,7 +1738,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Input
-                label="SEGURADORA & APÓLICE"
+                label="SEGURADORA E APÓLICE"
                 placeholder="EX: PORTO SEGURO APÓLICE #998877"
                 value={formData.insuranceProvider}
                 onChange={(e) => setFormData({ ...formData, insuranceProvider: e.target.value.toUpperCase() })}
@@ -1750,7 +1750,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                 onChange={(e) => setFormData({ ...formData, insuranceExpiration: e.target.value })}
               />
               <Input
-                label="RASTREADOR & TELEMETRIA"
+                label="RASTREADOR E TELEMETRIA"
                 placeholder="EX: ITURAN GPS 4G COM CORTE REMOTO"
                 value={formData.tracker}
                 onChange={(e) => setFormData({ ...formData, tracker: e.target.value.toUpperCase() })}
@@ -1836,7 +1836,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                 <h4 className="font-bold uppercase text-slate-800 flex items-center gap-1.5">
                   <DollarSign className="w-4 h-4 text-emerald-600" />
-                  Dados Financeiros & Tarifas
+                  Dados financeiros e tarifas
                 </h4>
                 <div className="space-y-1 text-slate-600">
                   <p><strong>Valor de Aquisição:</strong> {maskCurrency(viewingVehicle.purchaseValue || 0)}</p>

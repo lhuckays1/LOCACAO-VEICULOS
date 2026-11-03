@@ -372,7 +372,7 @@ export const MaintenancePage: React.FC = () => {
         <div>
           <h1 className="text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
             <Wrench className="w-6 h-6 text-emerald-600" />
-            Controle de Manutenção & Oficinas
+            Controle de manutenção e oficinas
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Ordens de serviço, manutenção preventiva, corretiva, trocas de óleo e revisões programadas por quilometragem.

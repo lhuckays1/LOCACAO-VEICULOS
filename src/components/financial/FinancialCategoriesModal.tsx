@@ -133,7 +133,7 @@ export const FinancialCategoriesModal: React.FC<FinancialCategoriesModalProps> =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="CATEGORIAS & CENTROS DE CUSTO"
+      title="CATEGORIAS E CENTROS DE CUSTO"
       description="Estruturação do plano de contas e centros de resultado da locadora."
       maxWidth="2xl"
     >

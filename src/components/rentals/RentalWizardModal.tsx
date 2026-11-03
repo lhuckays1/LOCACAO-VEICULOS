@@ -599,7 +599,7 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
                 />
 
                 <Input
-                  label="VALOR DO CAUÇÃO (R$)"
+                  label="VALOR DA CAUÇÃO (R$)"
                   type="number"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(parseFloat(e.target.value) || 0)}
@@ -607,7 +607,7 @@ export const RentalWizardModal: React.FC<RentalWizardModalProps> = ({
                 />
 
                 <Select
-                  label="STATUS INICIAL DO CAUÇÃO"
+                  label="STATUS INICIAL DA CAUÇÃO"
                   value={statusCaucao}
                   onChange={(e) => {
                     const st = e.target.value as DepositStatus;

@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Skeleton } from '../components/ui/Skeleton';
-import { maskCurrency, formatDate, maskPhone, maskPlate } from '../utils/formatters';
+import { maskCurrency, formatDate, maskPhone, maskPlate, translateStatus } from '../utils/formatters';
 import {
   Car,
   CheckCircle2,
@@ -27,25 +27,6 @@ import { NavigationTab } from '../layouts/AppLayout';
 interface DashboardPageProps {
   onNavigate: (tab: NavigationTab) => void;
 }
-
-const translateStatus = (status: string): string => {
-  const translations: Record<string, string> = {
-    DRAFT: 'RASCUNHO',
-    SCHEDULED: 'AGENDADO',
-    ACTIVE: 'ATIVO',
-    COMPLETED: 'CONCLUÍDO',
-    CANCELLED: 'CANCELADO',
-    OVERDUE: 'ATRASADO',
-    BLOCKED: 'BLOQUEADO',
-    IN_PROGRESS: 'EM ANDAMENTO',
-    WAITING_PARTS: 'AGUARDANDO PEÇAS',
-    PENDING: 'PENDENTE',
-    PAID: 'PAGO',
-    PARTIAL: 'PARCIAL',
-  };
-
-  return translations[status] || status;
-};
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate,
@@ -192,7 +173,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         />
 
         <StatCard
-          title="DESPESAS & CUSTOS"
+          title="DESPESAS E CUSTOS"
           value={maskCurrency(m.totalExpenses)}
           subtitle={`Lucro líquido: ${maskCurrency(m.netProfit)}`}
           icon={<TrendingUp className="w-5 h-5" />}

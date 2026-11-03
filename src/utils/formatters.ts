@@ -2,6 +2,81 @@
  * Frontend Formatters, Masks and Document Checksum Verification
  */
 
+const STATUS_LABELS_PT_BR: Record<string, string> = {
+  ACTIVE: 'ATIVA', INACTIVE: 'INATIVO', DRAFT: 'RASCUNHO', SCHEDULED: 'AGENDADA',
+  COMPLETED: 'FINALIZADA', CANCELLED: 'CANCELADA', OVERDUE: 'ATRASADA', BLOCKED: 'BLOQUEADA',
+  IN_PROGRESS: 'EM ANDAMENTO', WAITING_PARTS: 'AGUARDANDO PEÇAS', PENDING: 'PENDENTE',
+  PAID: 'PAGO', PARTIAL: 'PARCIAL', AVAILABLE: 'DISPONÍVEL', RESERVED: 'RESERVADO',
+  RENTED: 'ALUGADO', MAINTENANCE: 'EM MANUTENÇÃO', SOLD: 'VENDIDO', RESOLVED: 'RESOLVIDO',
+  REPORTED: 'REGISTRADO', UNDER_ANALYSIS: 'EM ANÁLISE', IN_REPAIR: 'EM REPARO',
+  INSURANCE_CLAIMED: 'SEGURO ACIONADO', REIMBURSED: 'REEMBOLSADA', CONTESTED: 'EM RECURSO',
+  APPROVED: 'APROVADO', APPROVED_WITH_REMARKS: 'APROVADO COM RESSALVAS', REJECTED: 'REPROVADO',
+  CHECKOUT: 'SAÍDA', CHECKIN: 'RETORNO', FULL: 'CHEIO', THREE_QUARTERS: 'TRÊS QUARTOS',
+  HALF: 'MEIO TANQUE', QUARTER: 'UM QUARTO', RESERVE: 'RESERVA',
+};
+
+export function translateStatus(status: string | null | undefined): string {
+  if (!status) return '';
+  return STATUS_LABELS_PT_BR[status] || repairMojibake(status);
+}
+
+export function translateFinancialOrigin(origin: string | null | undefined): string {
+  if (!origin) return '';
+  const labels: Record<string, string> = {
+    RENTAL: 'LOCAÇÃO', EXTRA_FEE: 'TAXA EXTRA', DAMAGE: 'AVARIA', FINE: 'MULTA',
+    MAINTENANCE: 'MANUTENÇÃO', FUEL: 'COMBUSTÍVEL', INSURANCE: 'SEGURO',
+    ACQUISITION: 'AQUISIÇÃO DE VEÍCULO', SALE: 'VENDA DE VEÍCULO', SALARY: 'FOLHA DE PAGAMENTO',
+    TAX: 'IMPOSTOS E TAXAS', OFFICE: 'ADMINISTRATIVO', OTHER: 'OUTRAS MOVIMENTAÇÕES',
+  };
+  return labels[origin] || repairMojibake(origin);
+}
+
+export function translatePaymentMethod(method: string | null | undefined): string {
+  if (!method) return 'NÃO INFORMADO';
+  const labels: Record<string, string> = {
+    PIX: 'PIX', BOLETO: 'BOLETO BANCÁRIO', CARTAO_CREDITO: 'CARTÃO DE CRÉDITO',
+    CARTAO_DEBITO: 'CARTÃO DE DÉBITO', DINHEIRO: 'DINHEIRO', TRANSFERENCIA: 'TRANSFERÊNCIA',
+    CASH: 'DINHEIRO', CREDIT_CARD: 'CARTÃO DE CRÉDITO', DEBIT_CARD: 'CARTÃO DE DÉBITO',
+    BANK_TRANSFER: 'TRANSFERÊNCIA', OTHER: 'OUTRO', OUTRO: 'OUTRO',
+  };
+  return labels[method] || method;
+}
+
+export function translateRole(role: string | null | undefined): string {
+  if (!role) return '';
+  const labels: Record<string, string> = {
+    ADMIN: 'ADMINISTRADOR', SUPER_ADMIN: 'SUPERADMINISTRADOR', MANAGER: 'GESTOR',
+    OPERATOR: 'OPERADOR', FINANCIAL: 'FINANCEIRO',
+  };
+  return labels[role] || role;
+}
+
+export function translateFinancialLabel(label: string | null | undefined): string {
+  if (!label) return '';
+  const normalized = label.trim().toLocaleUpperCase('pt-BR');
+  const labels: Record<string, string> = {
+    COMBUSTIVEL: 'COMBUSTÍVEL',
+    MANUTENCAO: 'MANUTENÇÃO',
+    LOCACAO: 'LOCAÇÃO',
+    ADMINISTRACAO: 'ADMINISTRAÇÃO',
+    DOCUMENTACAO: 'DOCUMENTAÇÃO',
+    TAXAS: 'TAXAS',
+  };
+  return labels[normalized] || repairMojibake(label);
+}
+
+const MOJIBAKE_REPLACEMENTS: Array<[string, string]> = [
+  ['Ã‡', 'Ç'], ['Ãƒ', 'Ã'], ['Ã€', 'À'], ['Ã\u0081', 'Á'], ['Ã‚', 'Â'], ['Ã‰', 'É'],
+  ['ÃŠ', 'Ê'], ['Ã\u008D', 'Í'], ['Ã“', 'Ó'], ['Ã”', 'Ô'], ['Ã•', 'Õ'], ['Ãš', 'Ú'],
+  ['Ã¡', 'á'], ['Ã¢', 'â'], ['Ã£', 'ã'], ['Ã¤', 'ä'], ['Ã©', 'é'], ['Ãª', 'ê'],
+  ['Ã­', 'í'], ['Ã³', 'ó'], ['Ã´', 'ô'], ['Ãµ', 'õ'], ['Ã¶', 'ö'], ['Ãº', 'ú'],
+  ['Ã¼', 'ü'], ['Ã§', 'ç'], ['Âº', 'º'], ['Âª', 'ª'], ['Â°', '°'], ['Â·', '·'], ['Â', ''],
+];
+
+export function repairMojibake(value: string): string {
+  return MOJIBAKE_REPLACEMENTS.reduce((text, [broken, fixed]) => text.split(broken).join(fixed), value);
+}
+
 export function unmask(value: string | null | undefined): string {
   if (!value) return '';
   return value.replace(/[^a-zA-Z0-9]/g, '');

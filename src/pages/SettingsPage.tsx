@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { maskCNPJ, maskPhone, maskCEP } from '../utils/formatters';
+import { maskCNPJ, maskPhone, maskCEP, translateRole } from '../utils/formatters';
 import { Settings, Building2, Shield, CheckCircle2 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
@@ -132,17 +132,17 @@ export const SettingsPage: React.FC = () => {
                 <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">Perfil de Acesso:</span>
                   <Badge variant="success" className="font-mono text-[10px]">
-                    {user?.role}
+                    {translateRole(user?.role)}
                   </Badge>
                 </div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-600 text-[11px] space-y-1">
-                <span className="font-bold text-slate-800 block uppercase">Regras de Acesso (RBAC)</span>
-                <p>• <strong>ADMIN:</strong> Acesso total a todas as funções e exclusões.</p>
-                <p>• <strong>MANAGER:</strong> Gestão de frota, precificação e equipe.</p>
-                <p>• <strong>OPERATOR:</strong> Cadastro de clientes e emissão de locações.</p>
-                <p>• <strong>FINANCIAL:</strong> Controle de pagamentos, faturamento e DRE.</p>
+                <span className="font-bold text-slate-800 block uppercase">Regras de acesso</span>
+                <p>• <strong>ADMINISTRADOR:</strong> Acesso total às funções e exclusões.</p>
+                <p>• <strong>GESTOR:</strong> Gestão da frota, preços e equipe.</p>
+                <p>• <strong>OPERADOR:</strong> Cadastro de clientes e emissão de contratos.</p>
+                <p>• <strong>FINANCEIRO:</strong> Controle de pagamentos, faturamento e demonstrativo de resultados.</p>
               </div>
             </CardContent>
           </Card>
