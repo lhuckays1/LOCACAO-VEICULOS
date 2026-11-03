@@ -8,6 +8,7 @@ import {
   updateFinancialTransactionSchema,
   settleTransactionSchema,
   cancelTransactionSchema,
+  deleteFinancialTransactionSchema,
   financialCategorySchema,
   costCenterSchema,
 } from '../schemas/financial.schema.js';
@@ -496,6 +497,8 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
         rentalId: tx.rentalId,
         rentalNumber: tx.rental?.rentalNumber ?? tx.rental?.codigoContrato ?? null,
         rentalPaymentId: tx.rentalPaymentId,
+        maintenanceId: tx.maintenanceId,
+        insuranceId: tx.insuranceId,
         recurringId: tx.recurringId,
         grossAmount: Number(tx.grossAmount),
         discountAmount: Number(tx.discountAmount),
@@ -945,6 +948,8 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
         rentalId: tx.rentalId,
         rentalNumber: tx.rental?.rentalNumber ?? tx.rental?.codigoContrato ?? null,
         rentalPaymentId: tx.rentalPaymentId,
+        maintenanceId: tx.maintenanceId,
+        insuranceId: tx.insuranceId,
         recurringId: tx.recurringId,
         grossAmount: Number(tx.grossAmount),
         discountAmount: Number(tx.discountAmount),
@@ -1046,6 +1051,60 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
         return updated;
       });
       res.json({ message: 'Lançamento cancelado.', data: serializeFinancial(record) });
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * DELETE /api/financial/transactions/:id
+   * Permanently remove an erroneous, unliquidated manual transaction.
+   */
+  async deleteTransaction(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const companyId = req.user!.companyId!;
+      const userId = req.user!.userId;
+      const { reason } = deleteFinancialTransactionSchema.parse(req.body);
+
+      await prisma.$transaction(async (tx) => {
+        const { id } = req.params;
+        await tx.$queryRaw`SELECT id FROM financial_transactions WHERE id = ${id} AND "companyId" = ${companyId} FOR UPDATE`;
+        const current = await tx.financialTransaction.findFirst({
+          where: { id, companyId },
+          include: { settlements: true },
+        });
+        if (!current) throw new HttpError(404, 'Lançamento não encontrado.');
+        if (Number(current.paidAmount) > 0 || current.settlements.length > 0) {
+          throw new HttpError(409, 'Lançamentos com pagamentos registrados não podem ser excluídos. Faça o estorno e mantenha o histórico.');
+        }
+        if (
+          current.rentalId || current.rentalPaymentId || current.maintenanceId ||
+          current.insuranceId || current.recurringId || current.isRecurring
+        ) {
+          throw new HttpError(409, 'Lançamentos vinculados a contratos, manutenção, seguro ou recorrência não podem ser excluídos. Cancele o lançamento para preservar os vínculos.');
+        }
+
+        await tx.auditLog.create({
+          data: {
+            companyId,
+            userId,
+            action: 'DELETE',
+            entity: 'FINANCIAL_TRANSACTION',
+            entityId: current.id,
+            oldData: JSON.stringify({
+              type: current.type,
+              description: current.description,
+              grossAmount: Number(current.grossAmount),
+              netAmount: Number(current.netAmount),
+              status: current.status,
+              dueDate: current.dueDate,
+              categoryId: current.categoryId,
+              reason,
+            }),
+          },
+        });
+        await tx.financialTransaction.delete({ where: { id: current.id } });
+      });
+
+      res.json({ message: 'Lançamento excluído. A operação foi registrada na auditoria.' });
     } catch (err) { next(err); }
   }
 

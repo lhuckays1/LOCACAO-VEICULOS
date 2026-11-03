@@ -464,6 +464,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ reason }),
       }),
+    deleteTransaction: (id: string, reason: string) =>
+      request<{ message: string }>(`/financial/transactions/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason }),
+      }),
     getCategories: (type?: string) => {
       const q = type && type !== 'ALL' ? `?type=${type}` : '';
       return request<{ total: number; data: any[] }>(`/financial/categories${q}`);

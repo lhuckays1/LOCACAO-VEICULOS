@@ -77,6 +77,10 @@ export const cancelTransactionSchema = z.object({
   reason: z.string().min(3, 'Informe o motivo do cancelamento').optional(),
 });
 
+export const deleteFinancialTransactionSchema = z.object({
+  reason: z.string().trim().min(3, 'Informe o motivo da exclusão.').max(500),
+});
+
 export const financialCategorySchema = z.object({
   name: z.string().min(2, 'O nome da categoria é obrigatório'),
   type: z.enum(['INCOME', 'EXPENSE']),

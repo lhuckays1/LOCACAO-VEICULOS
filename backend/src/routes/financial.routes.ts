@@ -58,6 +58,12 @@ router.post(
   (req, res, next) => financialController.cancelTransaction(req, res, next)
 );
 
+router.delete(
+  '/transactions/:id',
+  authorize(['ADMIN', 'MANAGER', 'FINANCIAL']),
+  (req, res, next) => financialController.deleteTransaction(req, res, next)
+);
+
 // Categories
 router.get('/categories', (req, res, next) => financialController.listCategories(req, res, next));
 router.post(

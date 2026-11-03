@@ -17,6 +17,7 @@ import {
   Layers,
   XCircle,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 
 interface TransactionDetailsModalProps {
@@ -38,6 +39,7 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
   const [data, setData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (isOpen && transactionId) {
@@ -84,6 +86,36 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
       });
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const canDelete = Boolean(
+    data &&
+    Number(data.paidAmount || 0) === 0 &&
+    (data.settlements?.length || 0) === 0 &&
+    !data.rentalId && !data.rentalPaymentId && !data.maintenanceId &&
+    !data.insuranceId && !data.recurringId && !data.isRecurring
+  );
+
+  const handleDelete = async () => {
+    if (!window.confirm('EXCLUIR PERMANENTEMENTE ESTE LANÇAMENTO? A ação não pode ser desfeita.')) return;
+    const reason = window.prompt('Informe o motivo da exclusão:');
+    if (!reason?.trim()) return;
+    if (reason.trim().length < 3) {
+      addToast({ title: 'MOTIVO OBRIGATÓRIO', message: 'Informe pelo menos 3 caracteres.', type: 'warning' });
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await api.financial.deleteTransaction(transactionId, reason.trim());
+      addToast({ title: 'LANÇAMENTO EXCLUÍDO', message: 'A exclusão foi registrada na auditoria.', type: 'success' });
+      if (onRefresh) onRefresh();
+      onClose();
+    } catch (err: any) {
+      addToast({ title: 'ERRO AO EXCLUIR', message: err.message || 'Falha ao excluir lançamento.', type: 'danger' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -265,11 +297,23 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
                   type="button"
                   variant="outline"
                   onClick={handleCancel}
-                  disabled={isCancelling}
+                  disabled={isCancelling || isDeleting}
                   className="text-rose-600 hover:text-rose-700 border-rose-200 hover:bg-rose-50 text-xs gap-1"
                 >
                   <XCircle className="w-3.5 h-3.5" />
                   Cancelar Lançamento
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDelete}
+                  disabled={isDeleting || isCancelling}
+                  className="ml-2 text-rose-700 hover:text-rose-800 border-rose-300 hover:bg-rose-50 text-xs gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Excluir lançamento
                 </Button>
               )}
             </div>

@@ -160,7 +160,10 @@ export class DashboardController {
           where: {
             companyId,
             type: FinancialType.INCOME,
-            status: FinancialStatus.PAID,
+            // Recebimentos parciais também contam, mesmo enquanto houver saldo.
+            status: {
+              not: FinancialStatus.CANCELLED,
+            },
           },
           _sum: {
             paidAmount: true,
