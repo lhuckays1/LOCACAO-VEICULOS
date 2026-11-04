@@ -55,17 +55,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { id: 'DASHBOARD' as NavigationTab, label: 'PAINEL', icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: 'CLIENTES' as NavigationTab, label: 'CLIENTES', icon: <Users className="w-4 h-4" /> },
-    { id: 'VEICULOS' as NavigationTab, label: 'VEÍCULOS', icon: <Car className="w-4 h-4" /> },
-    { id: 'LOCACOES' as NavigationTab, label: 'LOCAÇÕES', icon: <KeyRound className="w-4 h-4" /> },
-    { id: 'FINANCEIRO' as NavigationTab, label: 'FINANCEIRO', icon: <CircleDollarSign className="w-4 h-4" /> },
-    { id: 'MANUTENCAO' as NavigationTab, label: 'MANUTENÇÃO', icon: <Wrench className="w-4 h-4" /> },
-    { id: 'VISTORIAS' as NavigationTab, label: 'VISTORIAS', icon: <ClipboardCheck className="w-4 h-4" /> },
-    { id: 'MULTAS' as NavigationTab, label: 'MULTAS', icon: <AlertOctagon className="w-4 h-4" /> },
-    { id: 'SINISTROS' as NavigationTab, label: 'SINISTROS', icon: <ShieldAlert className="w-4 h-4" /> },
-    { id: 'RELATORIOS' as NavigationTab, label: 'RELATÓRIOS', icon: <BarChart3 className="w-4 h-4" /> },
-    { id: 'CONFIGURACOES' as NavigationTab, label: 'CONFIGURAÇÕES', icon: <Settings className="w-4 h-4" /> },
+    { id: 'DASHBOARD' as NavigationTab, label: 'Início', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { id: 'CLIENTES' as NavigationTab, label: 'Clientes', icon: <Users className="w-5 h-5" /> },
+    { id: 'VEICULOS' as NavigationTab, label: 'Veículos', icon: <Car className="w-5 h-5" /> },
+    { id: 'LOCACOES' as NavigationTab, label: 'Locações', icon: <KeyRound className="w-5 h-5" /> },
+    { id: 'FINANCEIRO' as NavigationTab, label: 'Financeiro', icon: <CircleDollarSign className="w-5 h-5" /> },
+    { id: 'MANUTENCAO' as NavigationTab, label: 'Manutenção', icon: <Wrench className="w-5 h-5" /> },
+    { id: 'VISTORIAS' as NavigationTab, label: 'Vistorias', icon: <ClipboardCheck className="w-5 h-5" /> },
+    { id: 'MULTAS' as NavigationTab, label: 'Multas', icon: <AlertOctagon className="w-5 h-5" /> },
+    { id: 'SINISTROS' as NavigationTab, label: 'Sinistros', icon: <ShieldAlert className="w-5 h-5" /> },
+    { id: 'RELATORIOS' as NavigationTab, label: 'Relatórios', icon: <BarChart3 className="w-5 h-5" /> },
+    { id: 'CONFIGURACOES' as NavigationTab, label: 'Configurações', icon: <Settings className="w-5 h-5" /> },
   ];
 
   const handleNavClick = (tab: NavigationTab) => {
@@ -88,7 +88,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          className="min-h-11 min-w-11 p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          aria-label={isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="main-navigation"
         >
           {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
@@ -133,14 +136,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav id="main-navigation" aria-label="Navegação principal" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => {
             const isActive = currentTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                className={`w-full min-h-11 flex items-center gap-3 px-3 py-3 rounded-lg text-base font-semibold transition-all ${
                   isActive
                     ? 'bg-emerald-600 text-white shadow-sm font-bold'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
@@ -168,7 +171,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <button
               onClick={logout}
               title="Sair do Sistema"
-              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+              aria-label="Sair do sistema"
+              className="min-h-11 min-w-11 p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -183,10 +187,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           {/* Active Tab Title / Breadcrumb */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">MÓDULO</span>
-              <span className="text-slate-300">/</span>
-              <h2 className="text-base font-black text-slate-900 tracking-tight uppercase">
-                {currentTab}
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                {navItems.find((item) => item.id === currentTab)?.label || "Frota CRM"}
               </h2>
             </div>
           </div>

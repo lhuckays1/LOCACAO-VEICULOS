@@ -80,6 +80,7 @@ export const FinancialPage: React.FC = () => {
   // Modals state
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [selectedTransactionForSettlement, setSelectedTransactionForSettlement] = useState<any>(null);
+  const [insuranceRefreshToken, setInsuranceRefreshToken] = useState(0);
 
   const [isNewTxOpen, setIsNewTxOpen] = useState(false);
   const [newTxDefaultType, setNewTxDefaultType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
@@ -307,7 +308,7 @@ export const FinancialPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('DASHBOARD')}
-          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
+          className={`min-h-11 px-4 py-3 text-sm font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === 'DASHBOARD'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -320,7 +321,7 @@ export const FinancialPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('SEGUROS')}
-          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'SEGUROS' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+          className={`min-h-11 px-4 py-3 text-sm font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'SEGUROS' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
         >
           <ShieldCheck className="w-3.5 h-3.5" /> SEGUROS DA FROTA
         </button>
@@ -328,7 +329,7 @@ export const FinancialPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('RECEBER')}
-          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
+          className={`min-h-11 px-4 py-3 text-sm font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === 'RECEBER'
               ? 'bg-emerald-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -341,7 +342,7 @@ export const FinancialPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('PAGAR')}
-          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
+          className={`min-h-11 px-4 py-3 text-sm font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === 'PAGAR'
               ? 'bg-rose-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -354,7 +355,7 @@ export const FinancialPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('FLUXO_CAIXA')}
-          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
+          className={`min-h-11 px-4 py-3 text-sm font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === 'FLUXO_CAIXA'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -367,7 +368,7 @@ export const FinancialPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('INADIMPLENCIA')}
-          className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
+          className={`min-h-11 px-4 py-3 text-sm font-bold rounded-lg flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === 'INADIMPLENCIA'
               ? 'bg-amber-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -546,7 +547,7 @@ export const FinancialPage: React.FC = () => {
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase font-bold tracking-wider">
                     <tr>
                       <th className="px-4 py-3">Tipo / Origem</th>
@@ -602,7 +603,7 @@ export const FinancialPage: React.FC = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenDetails(tx.id)}
-                              className="text-xs h-7 px-2"
+                              className="min-h-10"
                             >
                               Detalhes
                             </Button>
@@ -610,7 +611,7 @@ export const FinancialPage: React.FC = () => {
                               variant="primary"
                               size="sm"
                               onClick={() => handleOpenSettlement(tx)}
-                              className="text-xs h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700"
+                              className="min-h-10 bg-emerald-600 hover:bg-emerald-700"
                             >
                               Dar Baixa
                             </Button>
@@ -688,7 +689,7 @@ export const FinancialPage: React.FC = () => {
                     value={recSearch}
                     onChange={(e) => setRecSearch(e.target.value.toUpperCase())}
                     onKeyDown={(e) => e.key === 'Enter' && loadReceivables()}
-                    className="pl-9 text-xs uppercase"
+                    className="pl-9"
                   />
                 </div>
 
@@ -698,7 +699,7 @@ export const FinancialPage: React.FC = () => {
                     onChange={(e) => {
                       setRecStatusFilter(e.target.value);
                     }}
-                    className="text-xs"
+                    className=""
                   >
                     <option value="ALL">TODOS OS STATUS</option>
                     <option value="PENDING">PENDENTE</option>
@@ -735,7 +736,7 @@ export const FinancialPage: React.FC = () => {
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase font-bold tracking-wider">
                     <tr>
                       <th className="px-4 py-3">Vencimento</th>
@@ -806,7 +807,7 @@ export const FinancialPage: React.FC = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenDetails(tx.id)}
-                              className="text-xs h-7 px-2"
+                              className="min-h-10"
                             >
                               Detalhes
                             </Button>
@@ -815,7 +816,7 @@ export const FinancialPage: React.FC = () => {
                                 variant="primary"
                                 size="sm"
                                 onClick={() => handleOpenSettlement(tx)}
-                                className="text-xs h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700"
+                                className="min-h-10 bg-emerald-600 hover:bg-emerald-700"
                               >
                                 Dar Baixa
                               </Button>
@@ -894,7 +895,7 @@ export const FinancialPage: React.FC = () => {
                     value={paySearch}
                     onChange={(e) => setPaySearch(e.target.value.toUpperCase())}
                     onKeyDown={(e) => e.key === 'Enter' && loadPayables()}
-                    className="pl-9 text-xs uppercase"
+                    className="pl-9"
                   />
                 </div>
 
@@ -902,7 +903,7 @@ export const FinancialPage: React.FC = () => {
                   <Select
                     value={payStatusFilter}
                     onChange={(e) => setPayStatusFilter(e.target.value)}
-                    className="text-xs"
+                    className=""
                   >
                     <option value="ALL">TODOS OS STATUS</option>
                     <option value="PENDING">PENDENTE</option>
@@ -928,7 +929,7 @@ export const FinancialPage: React.FC = () => {
                       ))}
                   </Select>
 
-                  <Button variant="primary" size="sm" onClick={loadPayables} className="text-xs">
+                  <Button variant="primary" size="sm" onClick={loadPayables} className="">
                     <Filter className="w-3.5 h-3.5" />
                   </Button>
                 </div>
@@ -941,7 +942,7 @@ export const FinancialPage: React.FC = () => {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle>Obrigações & Contas a Pagar</CardTitle>
-                <p className="text-xs text-slate-500">Manutenções, seguro da frota, IPVA, combustíveis e despesas gerais</p>
+                <p className="text-sm text-slate-600">Manutenções, IPVA, combustíveis e demais despesas dos veículos.</p>
               </div>
               <Button
                 variant="primary"
@@ -953,9 +954,17 @@ export const FinancialPage: React.FC = () => {
                 Nova Despesa
               </Button>
             </CardHeader>
+            {payablesMetrics?.insuranceCount > 0 && (
+              <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950">
+                <p>{payablesMetrics.insuranceCount} parcela(s) de seguro estão organizadas na área própria de seguros. Os valores continuam incluídos nos totais acima.</p>
+                <Button variant="outline" size="sm" onClick={() => setActiveTab('SEGUROS')}>
+                  <ShieldCheck className="h-4 w-4" /> Ver parcelas de seguros
+                </Button>
+              </div>
+            )}
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase font-bold tracking-wider">
                     <tr>
                       <th className="px-4 py-3">Vencimento</th>
@@ -1025,7 +1034,7 @@ export const FinancialPage: React.FC = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenDetails(tx.id)}
-                              className="text-xs h-7 px-2"
+                              className="min-h-10"
                             >
                               Detalhes
                             </Button>
@@ -1127,7 +1136,7 @@ export const FinancialPage: React.FC = () => {
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase font-bold tracking-wider">
                     <tr>
                       <th className="px-4 py-3">Data</th>
@@ -1328,7 +1337,7 @@ export const FinancialPage: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'SEGUROS' && <VehicleInsurancePanel />}
+      {activeTab === 'SEGUROS' && <VehicleInsurancePanel refreshToken={insuranceRefreshToken} onSettle={handleOpenSettlement} />}
 
       {/* ======================================================== */}
       {/* MODALS                                                   */}
@@ -1341,6 +1350,7 @@ export const FinancialPage: React.FC = () => {
         }}
         transaction={selectedTransactionForSettlement}
         onSuccess={() => {
+          if (activeTab === 'SEGUROS') setInsuranceRefreshToken((token) => token + 1);
           handleRefreshCurrent();
           loadDashboard();
         }}
