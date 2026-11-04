@@ -34,6 +34,7 @@ import {
   ArrowRight,
   Trash2,
   ReceiptText,
+  MessageCircle,
 } from 'lucide-react';
 
 interface RentalDetailModalProps {
@@ -507,6 +508,25 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
   const contractCode = rental.codigoContrato || rental.rentalNumber;
   const isCancelable = rental.status === 'RASCUNHO' || rental.status === 'AGENDADA' || rental.status === 'DRAFT' || rental.status === 'SCHEDULED';
   const isActive = rental.status === 'ATIVA' || rental.status === 'ACTIVE';
+
+  const handleManualWhatsAppMessage = () => {
+    const rawPhone = rental.client?.phone || '';
+    const digits = rawPhone.replace(/\D/g, '');
+    if (!digits) {
+      toastError('Telefone não informado', 'Cadastre um telefone para o cliente antes de abrir o WhatsApp.');
+      return;
+    }
+
+    const whatsappNumber = digits.length <= 11 ? '55' + digits : digits;
+    const clientName = rental.client?.name || 'Olá';
+    const companyName = company?.name || company?.legalName || 'nossa equipe';
+    const vehicle = [rental.vehicle?.brand, rental.vehicle?.model].filter(Boolean).join(' ');
+    const plate = rental.vehicle?.plate ? ' (' + rental.vehicle.plate + ')' : '';
+    const message = 'Olá, ' + clientName + '! Aqui é da ' + companyName + '. Estou entrando em contato sobre o contrato ' + contractCode + ', referente ao veículo ' + vehicle + plate + '. Quando puder, responda esta mensagem para conversarmos.';
+    const url = 'https://wa.me/' + whatsappNumber + '?text=' + encodeURIComponent(message);
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
   const mileageControl = rental as Rental & {
     franquiaKmMensal?: number;
     kmRodadoCiclo?: number;
@@ -557,7 +577,18 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleManualWhatsAppMessage}
+                className="font-bold text-xs gap-1.5 border-emerald-400 text-emerald-100 hover:bg-emerald-800"
+                title="Abrir o WhatsApp com uma mensagem para o cliente"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Enviar mensagem
+              </Button>
               {isActive && (
                 <Button
                   variant="primary"
