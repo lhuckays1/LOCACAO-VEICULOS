@@ -20,7 +20,7 @@ export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({ 
 );
 
 export const CardDescription: React.FC<React.HTMLAttributes<HTMLParagraphElement>> = ({ className, children, ...props }) => (
-  <p className={cn('text-xs text-slate-500', className)} {...props}>
+  <p className={cn('text-sm text-slate-600', className)} {...props}>
     {children}
   </p>
 );

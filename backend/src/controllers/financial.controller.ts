@@ -850,6 +850,10 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
 
       result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
+      // As parcelas do seguro ficam na aba Seguros da Frota, mas continuam nos totais financeiros.
+      const insuranceCount = result.filter((transaction) => transaction.origin === 'INSURANCE').length;
+      const payableRows = result.filter((transaction) => transaction.origin !== 'INSURANCE');
+
       const totalPending = result
         .filter((t) => t.status === 'PENDING' || t.status === 'PARTIAL')
         .reduce((sum, t) => sum + t.remainingAmount, 0);
@@ -862,16 +866,15 @@ async getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction)
         .filter((t) => t.status === 'PAID')
         .reduce((sum, t) => sum + t.paidAmount, 0);
 
-      const enriched = result.map((t) => this.enrichTransaction(t, companyId));
-
       res.json({
         metrics: {
           totalPending: Number(totalPending.toFixed(2)),
           totalOverdue: Number(totalOverdue.toFixed(2)),
           totalPaid: Number(totalPaid.toFixed(2)),
-          count: enriched.length,
+          count: payableRows.length,
+          insuranceCount,
         },
-        data: enriched,
+        data: payableRows.map((transaction) => this.enrichTransaction(transaction, companyId)),
       });
     } catch (err) {
       next(err);

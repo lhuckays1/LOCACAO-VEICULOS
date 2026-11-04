@@ -48,6 +48,7 @@ export const Badge: React.FC<BadgeProps> = ({ className, variant = 'default', ch
     PAID: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     PAGO: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
+    PARTIAL: 'bg-purple-50 text-purple-700 border-purple-200',
     PENDENTE: 'bg-amber-50 text-amber-700 border-amber-200',
 
     RECEBIDA: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -69,7 +70,7 @@ export const Badge: React.FC<BadgeProps> = ({ className, variant = 'default', ch
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap',
+        'inline-flex items-center px-2.5 py-1 rounded-full text-sm font-semibold border whitespace-nowrap',
         variantStyles[variant] || variantStyles.default,
         className
       )}

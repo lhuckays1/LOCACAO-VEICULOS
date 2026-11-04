@@ -500,6 +500,7 @@ export const api = {
       return request<{ total: number; data: any[] }>(`/financial/insurances${query.size ? `?${query}` : ''}`);
     },
     createInsurance: (data: any) => request<{ message: string; data: any }>('/financial/insurances', { method: 'POST', body: JSON.stringify(data) }),
+    updateInsurance: (id: string, data: any) => request<{ message: string; data: any }>(`/financial/insurances/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     updateInsuranceStatus: (id: string, status: 'ACTIVE' | 'CANCELLED') => request<{ message: string; data: any }>(`/financial/insurances/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     createCostCenter: (data: any) =>
       request<{ message: string; data: any }>('/financial/cost-centers', {
