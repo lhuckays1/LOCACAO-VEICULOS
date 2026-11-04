@@ -1783,7 +1783,6 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
           isOpen={!!viewingVehicle}
           onClose={() => setViewingVehicle(null)}
           title={`Ficha do Veículo: ${viewingVehicle.brand} ${viewingVehicle.model} (${maskPlate(viewingVehicle.plate)})`}
-          description={`ID de Controle: ${viewingVehicle.id}`}
           maxWidth="4xl"
         >
           <div className="space-y-6 text-xs">
@@ -1871,7 +1870,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                 <Gauge className="w-4 h-4 text-emerald-600" />
                 Histórico de Quilometragem
               </h4>
-              {(!viewingVehicle.mileageHistory || viewingVehicle.mileageHistory.length === 0) ? (
+              {(!viewingVehicle.mileageLogs || viewingVehicle.mileageLogs.length === 0) ? (
                 <div className="p-3 rounded-lg bg-slate-50 text-slate-400 text-center">
                   Nenhum registro no diário de quilometragem.
                 </div>
@@ -1887,7 +1886,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {viewingVehicle.mileageHistory.map((m: any) => (
+                      {viewingVehicle.mileageLogs.map((m: any) => (
                         <tr key={m.id}>
                           <td className="px-4 py-2">{formatDateTime(m.date)}</td>
                           <td className="px-4 py-2 font-bold">{maskMileage(m.mileage)}</td>
