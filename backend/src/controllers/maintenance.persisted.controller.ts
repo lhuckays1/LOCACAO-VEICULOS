@@ -141,7 +141,7 @@ export class PersistedMaintenanceController extends PrismaMaintenanceController 
   updateSupplier(req: AuthenticatedRequest, res: Response, next: NextFunction) { return this.catalog(req, res, next, 'supplier', 'update'); }
   deleteSupplier(req: AuthenticatedRequest, res: Response, next: NextFunction) { return this.catalog(req, res, next, 'supplier', 'delete'); }
 
-  private async calculateAlerts(companyId: string) {
+  async calculateAlerts(companyId: string) {
     const [vehicles, plans] = await Promise.all([
       prisma.vehicle.findMany({ where: { companyId }, include: { maintenances: { where: { status: 'COMPLETED' }, orderBy: { dataConclusao: 'desc' }, take: 1 } } }),
       prisma.maintenancePlan.findMany({ where: { companyId, status: 'ATIVO' } }),

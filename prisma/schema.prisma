@@ -62,6 +62,7 @@ model Company {
   users                 User[]
   vehicles              Vehicle[]
   insurancePolicies     VehicleInsurance[]
+  notifications        Notification[]
   workshops             Workshop[]
 
   @@map("companies")
@@ -82,11 +83,36 @@ model User {
   financialSettlements FinancialSettlement[]
   sessions             AuthSession[]
   permissions          UserPermission[]
+  notifications        Notification[]
   company              Company?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
   @@index([role])
   @@map("users")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String
+  type        String
+  severity    Int      @default(1)
+  title       String
+  message     String
+  entityId    String?
+  actionTab   String   @default("DASHBOARD")
+  eventKey    String
+  readAt      DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventKey])
+  @@index([companyId, userId, resolvedAt, createdAt])
+  @@index([companyId, type, resolvedAt])
+  @@map("notifications")
 }
 
 model Client {

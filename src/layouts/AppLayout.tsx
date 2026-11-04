@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../services/api';
 import { translateRole } from '../utils/formatters';
 import {
   LayoutDashboard,
@@ -53,6 +54,36 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const { user, company, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadNotifications = async () => {
+      try {
+        const result = await api.notifications.list();
+        if (mounted) { setNotifications(result.data); setUnreadCount(result.unreadCount); }
+      } catch { /* Notificações não devem interromper a navegação. */ }
+    };
+    void loadNotifications();
+    const timer = window.setInterval(loadNotifications, 60_000);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [user?.id]);
+
+  const openNotification = async (item: any) => {
+    try { await api.notifications.markRead(item.id); } catch { /* A notificação poderá ser aberta novamente. */ }
+    setNotifications((items) => items.map((notice) => notice.id === item.id ? { ...notice, readAt: new Date().toISOString() } : notice));
+    setUnreadCount((count) => Math.max(0, count - (item.readAt ? 0 : 1)));
+    setNotificationsOpen(false);
+    onSelectTab(item.actionTab as NavigationTab);
+  };
+
+  const markAllNotificationsRead = async () => {
+    try { await api.notifications.markAllRead(); } catch { /* Mantém a interface disponível. */ }
+    setNotifications((items) => items.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+    setUnreadCount(0);
+  };
 
   const navItems = [
     { id: 'DASHBOARD' as NavigationTab, label: 'Início', icon: <LayoutDashboard className="w-5 h-5" /> },
@@ -86,6 +117,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <span className="text-[10px] text-emerald-400 font-medium">GESTÃO DE LOCAÇÃO</span>
           </div>
         </div>
+        <button
+          onClick={() => setNotificationsOpen((open) => !open)}
+          className="relative min-h-11 min-w-11 p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          aria-label={unreadCount ? `Notificações, ${unreadCount} não lidas` : 'Notificações'}
+          aria-expanded={notificationsOpen}
+        >
+          <Bell className="w-5 h-5" />
+          {unreadCount > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[10px] leading-4 text-center text-white font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+        </button>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="min-h-11 min-w-11 p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -182,6 +222,29 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {notificationsOpen && (
+          <div className="fixed right-3 top-16 z-[60] w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" role="dialog" aria-label="Notificações">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div><h3 className="font-bold text-slate-900">Notificações</h3><p className="text-xs text-slate-500">{unreadCount} não lida(s)</p></div>
+              <button onClick={markAllNotificationsRead} disabled={!unreadCount} className="min-h-10 px-2 text-sm font-semibold text-emerald-700 disabled:text-slate-400">Marcar todas como lidas</button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {notifications.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">Tudo em dia. Não há avisos ativos.</p> : notifications.map((item) => (
+                <button key={item.id} onClick={() => void openNotification(item)} className="w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+                  <span className="flex items-start gap-3">
+                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : item.severity >= 3 ? 'bg-rose-500' : item.severity === 2 ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-slate-900">{item.title}</span>
+                      <span className="mt-1 block text-sm text-slate-600">{item.message}</span>
+                      <span className="mt-1 block text-xs text-slate-400">{new Date(item.createdAt).toLocaleDateString('pt-BR')}</span>
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Top Desktop Navigation Bar */}
         <header className="hidden md:flex items-center justify-between h-16 px-8 bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-2xs">
           {/* Active Tab Title / Breadcrumb */}
@@ -195,6 +258,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
           {/* User Info */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setNotificationsOpen((open) => !open)}
+              className="relative min-h-11 min-w-11 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100"
+              aria-label={unreadCount ? `Notificações, ${unreadCount} não lidas` : 'Notificações'}
+              aria-expanded={notificationsOpen}
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[10px] leading-4 text-center text-white font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            </button>
             <div className="h-6 w-px bg-slate-200 mx-1" />
 
             <div className="flex items-center gap-2.5 pl-1">
