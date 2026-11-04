@@ -78,6 +78,19 @@ const getVehicleStatusLabel = (status: VehicleStatus): string => {
   return labels[status] ?? status;
 };
 
+const getMileageLogTypeLabel = (type: string): string => {
+  const labels: Record<string, string> = {
+    RENTAL_START: 'Início da locação',
+    RENTAL_END: 'Devolução da locação',
+    MAINTENANCE: 'Manutenção',
+    MANUAL: 'Manual',
+    FUEL: 'Abastecimento',
+  };
+
+  return labels[type] ?? type;
+};
+
+
 type CrlvPdfTextItem = {
   text: string;
   x: number;
@@ -1890,7 +1903,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({
                         <tr key={m.id}>
                           <td className="px-4 py-2">{formatDateTime(m.date)}</td>
                           <td className="px-4 py-2 font-bold">{maskMileage(m.mileage)}</td>
-                          <td className="px-4 py-2">{m.type}</td>
+                          <td className="px-4 py-2">{getMileageLogTypeLabel(m.type)}</td>
                           <td className="px-4 py-2 text-slate-500">{m.notes || '—'}</td>
                         </tr>
                       ))}
