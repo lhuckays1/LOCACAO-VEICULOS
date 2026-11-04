@@ -580,10 +580,10 @@ export const RentalDetailModal: React.FC<RentalDetailModalProps> = ({
             <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
               <Button
                 type="button"
-                variant="outline"
+                variant="success"
                 size="sm"
                 onClick={handleManualWhatsAppMessage}
-                className="font-bold text-xs gap-1.5 border-emerald-400 text-emerald-100 hover:bg-emerald-800"
+                className="font-bold text-xs gap-1.5 bg-[#25D366] hover:bg-[#1fc45d] text-slate-950 border border-[#25D366] focus:ring-[#25D366]"
                 title="Abrir o WhatsApp com uma mensagem para o cliente"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
