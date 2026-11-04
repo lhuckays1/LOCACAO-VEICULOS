@@ -14,6 +14,8 @@ import inspectionsRoutes from './inspections.routes.js';
 import fleetRecordsRoutes from './fleet-records.routes.js';
 import reportsRoutes from './reports.routes.js';
 import userRoutes from './user.routes.js';
+import notificationRoutes from './notifications.routes.js';
+import { notificationsController } from '../controllers/notifications.controller.js';
 
 const apiRouter = Router();
 
@@ -47,6 +49,8 @@ apiRouter.use('/inspections', inspectionsRoutes);
 apiRouter.use('/records', fleetRecordsRoutes);
 apiRouter.use('/reports', reportsRoutes);
 apiRouter.use('/users', userRoutes);
+apiRouter.use('/notifications', notificationRoutes);
+apiRouter.get('/cron/notifications', (req, res, next) => notificationsController.runDaily(req as any, res, next));
 
 /**
  * HEALTH CHECK

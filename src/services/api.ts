@@ -98,6 +98,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  notifications: {
+    list: () => request<{ total: number; unreadCount: number; data: any[] }>('/notifications'),
+    markRead: (id: string) => request<{ message: string }>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
+    markAllRead: () => request<{ message: string }>('/notifications/read-all', { method: 'PATCH' }),
+  },
   // Auth
   auth: {
     login: (credentials: { email: string; password: string }) =>
